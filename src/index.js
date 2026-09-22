@@ -13,7 +13,7 @@
  */
 import { lireTout } from "./sources.js";
 import { analyser } from "./analyse.js";
-import { pageTableau, pageInvestisseur, pageConnexion } from "./page.js";
+import { pageTableau, pageInvestisseur, pageTechnique, pageConnexion } from "./page.js";
 
 const COOKIE = "kasbah_tdb";
 const COOKIE_INV = "kasbah_inv";
@@ -61,6 +61,22 @@ export default {
       }
       const donnees = await lues(env, url.searchParams.has("rafraichir"));
       return html(pageInvestisseur(analyser(donnees, new Date()), new Date(cache.quand)));
+    }
+
+    // La vue technique : ouverte à l'équipe comme à l'associé, qui lit
+    // l'informatique et peut relever ce qui cloche.
+    if (url.pathname === "/technique") {
+      const jetons = await Promise.all([
+        env.MOT_DE_PASSE ? empreinte(env.MOT_DE_PASSE) : null,
+        env.MOT_DE_PASSE_INVESTISSEUR ? empreinte(env.MOT_DE_PASSE_INVESTISSEUR) : null,
+      ]);
+      const equipe = jetons[0] && lireCookie(requete, COOKIE) === jetons[0];
+      const associe = jetons[1] && lireCookie(requete, COOKIE_INV) === jetons[1];
+      if (!equipe && !associe) {
+        return html(pageConnexion({ titre: "Kasbah — comment c'est construit", action: "/investisseur/connexion" }), 401);
+      }
+      const donnees = await lues(env, url.searchParams.has("rafraichir"));
+      return html(pageTechnique(analyser(donnees, new Date()), new Date(cache.quand), associe && !equipe));
     }
 
     if (!env.MOT_DE_PASSE) {

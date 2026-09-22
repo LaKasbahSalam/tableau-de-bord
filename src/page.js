@@ -1,5 +1,6 @@
 /** Rendu HTML — tout est calculé côté Worker, la page n'a pas de script. */
 import { local, jourFr } from "./analyse.js";
+import { rendreMarkdown } from "./markdown.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 /** Échappe, puis rend `code` et **gras** — le Markdown des TASKS.md. */
@@ -116,6 +117,16 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 .dom{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .dom span{font-size:12.5px;font-family:var(--mono);color:var(--ink-2);background:var(--sunk);border-radius:999px;padding:4px 10px}
 .dom b{font-weight:500;color:var(--ink)}
+.doc{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:22px 24px}
+.doc h2{font-size:19px;margin:26px 0 10px}
+.doc h2:first-child{margin-top:0}
+.doc h3{font-size:16px;margin:20px 0 8px}
+.doc p{margin:0 0 12px;max-width:72ch}
+.doc ul,.doc ol{margin:0 0 14px;padding-left:22px;max-width:72ch}
+.doc li{margin-bottom:6px}
+.doc table{min-width:520px}
+.doc .tbl-scroll{margin:0 0 16px;border-radius:8px}
+.liens{display:flex;gap:10px;flex-wrap:wrap}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px}
 .chart svg{width:100%;height:auto;display:block}
 .chart text{font-family:var(--mono);font-size:11px;fill:var(--ink-3)}
@@ -381,5 +392,58 @@ ${occupationHtml(v.occupation)}
 </section>
 
 <footer><p>Chiffres : compte de résultat du classeur de trésorerie et réservations Beds24, recopiés chaque nuit. Registre tenu au fil des séances de travail.</p><a class="btn" href="/deconnexion">Se déconnecter</a></footer>
+</div></body></html>`;
+}
+
+
+/**
+ * « Comment c'est construit » : le texte de `pilotage/technique.md`, suivi
+ * de ce qui est vivant — les tâches automatiques de la nuit et les
+ * migrations récentes. Lisible par un associé qui lit l'informatique, sans
+ * une ligne de code.
+ */
+/** Le fichier commence par son propre titre : la page l'affiche déjà. */
+const sansPremierTitre = (md) => {
+  const texte = String(md || "");
+  if (!texte.startsWith("# ")) return texte;
+  const saut = texte.indexOf(String.fromCharCode(10));
+  return saut === -1 ? "" : texte.slice(saut + 1);
+};
+
+export function pageTechnique(v, lu, vueAssocie) {
+  const l = local(lu);
+  const heure = `${String(l.h).padStart(2, "0")}h${String(l.m).padStart(2, "0")}`;
+  const depots = (v.projets_depots || []).filter((d) => d.migrations_recentes && d.migrations_recentes.length);
+  return `${tete("Kasbah — comment c'est construit")}<div class="wrap">
+<header class="top">
+  <div>
+    <div class="eyebrow">La Kasbah Salam · Fès</div>
+    <h1>Comment c'est construit</h1>
+    <p>Ce qui tourne, où, avec quoi, et ce qui est fragile. Les noms des composants sont donnés pour que les questions puissent être précises.</p>
+    <div class="liens"><a class="btn" href="${vueAssocie ? "/investisseur" : "/"}">${vueAssocie ? "← Retour au pilotage" : "← Retour au tableau de bord"}</a></div>
+  </div>
+  <div class="stamp"><div><span class="eyebrow">Lu le ${jourFr(l.jour)} à</span><b>${heure}</b></div></div>
+</header>
+
+<section aria-labelledby="h-doc">
+  <div class="section-head"><h2 id="h-doc">L'architecture</h2><p>Tenue à jour dans <span class="mono">pilotage/technique.md</span></p></div>
+  ${v.technique ? `<article class="doc">${rendreMarkdown(sansPremierTitre(v.technique))}</article>`
+    : `<div class="panne">La page technique n'est pas encore écrite (fichier <span class="mono">pilotage/technique.md</span>).</div>`}
+</section>
+
+<section aria-labelledby="h-flux-tech">
+  <div class="section-head"><h2 id="h-flux-tech">Ce qui a tourné cette nuit</h2><p>Heure du Maroc · l'état vient de <span class="mono">analytique.fraicheur</span> et de la copie des rappels</p></div>
+  ${fluxHtml(v.flux)}
+</section>
+
+${depots.length ? `<section aria-labelledby="h-mig">
+  <div class="section-head"><h2 id="h-mig">Dernières migrations écrites</h2><p>Écrites dans les dépôts · appliquées à la main dans Supabase</p></div>
+  <div class="tbl-scroll"><table>
+    <thead><tr><th>Dépôt</th><th>Migration</th></tr></thead>
+    <tbody>${depots.flatMap((d) => d.migrations_recentes.map((m) => `<tr><td>${esc(d.nom)}</td><td class="mono">${esc(m.replace(/\.sql$/, ""))}</td></tr>`)).join("")}</tbody>
+  </table></div>
+</section>` : ""}
+
+<footer><p>Cette page décrit l'état réel du système, pas une cible. Ce qui est signalé comme fragile l'est vraiment : les remarques sont les bienvenues.</p></footer>
 </div></body></html>`;
 }

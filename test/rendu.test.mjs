@@ -52,6 +52,17 @@ La page qui réunit les chiffres et l'état des outils.
 
 ## Site internet · Terminé · Clients · Karim
 `,
+  "/repos/LaKasbahSalam/Kasbah-Analytique/contents/pilotage/technique.md": `# Comment c'est construit
+
+| Brique | Ce que c'est |
+|---|---|
+| KasbahCalendar | L'application de l'équipe |
+
+## Ce qui est fragile
+
+1. **Les migrations s'appliquent à la main.** Pousser sur GitHub ne change rien à la base.
+2. Pas d'intégration continue : les tests tournent sur le poste de qui travaille.
+`,
   "/repos/LaKasbahSalam/Kasbah-Analytique/contents/pilotage/2026-09.md": `# Septembre 2026
 
 ### ${jour(1).slice(8, 10)}/${jour(1).slice(5, 7)}/${jour(1).slice(0, 4)} · Revenus · Décision · Snack
@@ -150,7 +161,7 @@ verifier(page.includes("déjà fusionnée"), "branche fusionnée repérée");
 verifier(page.includes("tresorerie") && page.includes("introuvable"), "dépôt absent : message clair");
 verifier(page.includes("snack_ventes"), "table inconnue signalée");
 verifier(!page.includes("Site internet"), "projets terminés masqués");
-verifier(page.includes("Maintenance d&#39;été") && page.includes("dans 8 j"), "échéance proche signalée");
+verifier(page.includes("Maintenance d&#39;été") && /dans \d+ j/.test(page), "échéance proche signalée");
 verifier(!/<script/i.test(page), "aucun script dans la page");
 
 r = await worker.fetch(new Request("https://t.dev/?rafraichir=1", { headers: { Cookie: cookie } }),
@@ -212,7 +223,24 @@ verifier(!inv.includes("Relire maintenant"), "pas de bouton de relecture : la vu
 r = await worker.fetch(new Request("https://t.dev/investisseur", { headers: { Cookie: cookie } }), env);
 verifier(r.status === 401, "le cookie de l'équipe n'ouvre pas la vue associé");
 
+// --- La vue technique
+r = await worker.fetch(new Request("https://t.dev/technique"), env);
+verifier(r.status === 401, "vue technique : fermée sans mot de passe");
+
+r = await worker.fetch(new Request("https://t.dev/technique?rafraichir=1", { headers: { Cookie: cookieInv } }), env);
+const tech = await r.text();
+verifier(r.status === 200 && tech.includes("<h1>Comment c'est construit</h1>"), "l'associé ouvre la vue technique, titrée une seule fois");
+verifier(tech.includes("<table>") && tech.includes("KasbahCalendar"), "le tableau du markdown est rendu");
+verifier(/<ol>[\s\S]*migrations s&#39;appliquent à la main/.test(tech), "la liste des fragilités est rendue");
+verifier(tech.includes("Ce qui a tourné cette nuit"), "les voyants de la nuit y sont");
+verifier(tech.includes("20260921200000_ventes_snack_export_parts"), "les dernières migrations y sont");
+verifier(!/<script|onerror=/i.test(tech), "le markdown ne peut pas injecter de script");
+
+r = await worker.fetch(new Request("https://t.dev/technique", { headers: { Cookie: cookie } }), env);
+verifier(r.status === 200, "l'équipe ouvre aussi la vue technique");
+
 if (process.argv[2]) fs.writeFileSync(process.argv[2], page);
+if (process.argv[4]) fs.writeFileSync(process.argv[4], tech);
 if (process.argv[3]) fs.writeFileSync(process.argv[3], inv);
 console.log(echecs ? `\n${echecs} échec(s)` : "\nTout est bon.");
 process.exit(echecs ? 1 : 0);

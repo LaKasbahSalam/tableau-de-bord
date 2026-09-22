@@ -208,6 +208,7 @@ export function analyser({ github, registre, supabase }, maintenant) {
       }
     }
     if (d.migrations && d.migrations.length) {
+      fiche.migrations_recentes = d.migrations.slice(-5).reverse();
       fiche.kv.push(["Dernière migration", `\`${d.migrations[d.migrations.length - 1].replace(/\.sql$/, "")}\``]);
     }
     if (!d.taches && !d.phases) fiche.notes.push("Pas de liste de tâches dans ce dépôt.");
@@ -266,10 +267,12 @@ export function analyser({ github, registre, supabase }, maintenant) {
 
   return {
     alertes,
+    projets_depots: projets,
     compteurs: { crit: alertes.filter((a) => a.niveau === "crit").length, warn: alertes.filter((a) => a.niveau === "warn").length },
     flux,
     projets,
     projets_ouverts: vueProjets,
+    technique: registre.ok ? registre.donnees.technique : "",
     faits,
     faits_par_domaine: parDomaine(faits, ici.jour, 30),
     chiffres: sb ? sb.chiffres : null,

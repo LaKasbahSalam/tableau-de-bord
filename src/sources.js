@@ -111,11 +111,12 @@ async function lireRegistre(env) {
     .filter((f) => f.type === "file" && /^\d{4}-\d{2}\.md$/.test(f.name))
     .map((f) => f.name).sort().reverse().slice(0, 4); // 4 derniers mois
 
-  const [projets, ...contenus] = await Promise.all([
+  const [projets, technique, ...contenus] = await Promise.all([
     gh(`${base}/projets.md`, true),
+    gh(`${base}/technique.md`, true),
     ...mois.map((n) => gh(`${base}/${n}`, true)),
   ]);
-  return { ok: true, donnees: { projets: projets || "", mois: contenus.filter(Boolean) } };
+  return { ok: true, donnees: { projets: projets || "", technique: technique || "", mois: contenus.filter(Boolean) } };
 }
 
 // ---------------------------------------------------------------- Supabase
