@@ -2,3 +2,5 @@ node_modules/
 .wrangler/
 .dev.vars
 apercu.html
+dist/
+a-coller-dans-cloudflare.js

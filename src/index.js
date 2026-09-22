@@ -19,8 +19,17 @@ const COOKIE = "kasbah_tdb";
 const DUREE_CACHE_MS = 3 * 60 * 1000;
 let cache = null; // { quand, donnees }
 
+// Valeurs publiques par défaut : la page marche aussi collée à la main dans
+// l'éditeur de Cloudflare, sans wrangler.jsonc.
+const PAR_DEFAUT = {
+  SUPABASE_URL: "https://sebwcxxoxpfbliypzokp.supabase.co",
+  NOTION_BASE_PROJETS: "46842588753e4d359861bc133bf1f272",
+  GITHUB_ORG: "LaKasbahSalam",
+};
+
 export default {
-  async fetch(requete, env) {
+  async fetch(requete, envBrut) {
+    const env = { ...PAR_DEFAUT, ...envBrut };
     const url = new URL(requete.url);
 
     if (!env.MOT_DE_PASSE) {
