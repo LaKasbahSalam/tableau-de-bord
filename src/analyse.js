@@ -4,6 +4,8 @@
  * projet, projets Notion ouverts, occupation.
  */
 
+import { lireProjets, lireFaits, parDomaine } from "./registre.js";
+
 const FUSEAU = "Africa/Casablanca";
 
 // ------------------------------------------------------------- Heures
@@ -104,14 +106,15 @@ function voyantRappel(rappels, moment, attendu, blocAttendu, copieOk) {
 
 // ------------------------------------------------------------- Analyse
 
-export function analyser({ github, notion, supabase }, maintenant) {
+export function analyser({ github, registre, supabase }, maintenant) {
   const ici = local(maintenant);
   // La copie de l'appli passe à 23h30 : avant, le dernier jour visible est hier.
   const copieDuJour = ici.h * 60 + ici.m >= 23 * 60 + 45;
   const attendu = copieDuJour ? ici.jour : decaler(ici.jour, -1);
 
   const alertes = [];
-  const alerte = (niveau, titre, detail, qui) => alertes.push({ niveau, titre, detail, qui });
+  // `technique` : utile à l'équipe, sans intérêt pour l'associé à distance
+  const alerte = (niveau, titre, detail, qui, technique = false) => alertes.push({ niveau, titre, detail, qui, technique });
 
   // --- Tâches automatiques
   const sb = supabase.ok ? supabase.donnees : null;
@@ -142,7 +145,7 @@ export function analyser({ github, notion, supabase }, maintenant) {
   }
   if (sb && sb.tables_inconnues && sb.tables_inconnues.length) {
     alerte("warn", `${sb.tables_inconnues.length} nouvelle(s) table(s) dans l'appli sans décision de copie`,
-      `\`${sb.tables_inconnues.join("`, `")}\` : à classer « copier » ou « exclure » dans \`kasbah_brut.tables\`, sinon l'analytique ne les voit pas.`, "Analytique");
+      `\`${sb.tables_inconnues.join("`, `")}\` : à classer « copier » ou « exclure » dans \`kasbah_brut.tables\`, sinon l'analytique ne les voit pas.`, "Analytique", true);
   }
 
   // --- Projets GitHub
@@ -164,7 +167,7 @@ export function analyser({ github, notion, supabase }, maintenant) {
         const migration = Boolean(ligneMigration);
         if (migration) {
           critique = true;
-          alerte("crit", i.titre, /pas toute|toutes seules/.test(ligneMigration) ? ligneMigration : `${ligneMigration} Une migration poussée sur GitHub ne s'applique pas toute seule.`, d.nom);
+          alerte("crit", i.titre, /pas toute|toutes seules/.test(ligneMigration) ? ligneMigration : `${ligneMigration} Une migration poussée sur GitHub ne s'applique pas toute seule.`, d.nom, true);
         }
         fiche.ouverts.push({ texte: i.titre, note: i.note, niveau: migration ? "crit" : (i.note ? "warn" : "") });
       }
@@ -201,7 +204,7 @@ export function analyser({ github, notion, supabase }, maintenant) {
       const age = b.dernier ? joursEntre(local(new Date(b.dernier)).jour, ici.jour) : null;
       if (age === null || age >= 2) {
         alerte("warn", `Branche \`${b.nom}\` : ${b.en_avance} changement(s) pas encore dans ${d.principale}`,
-          b.dernier ? `Dernier changement le ${quandFr(b.dernier)}, il y a ${age} jour(s).` : "", d.nom);
+          b.dernier ? `Dernier changement le ${quandFr(b.dernier)}, il y a ${age} jour(s).` : "", d.nom, true);
       }
     }
     if (d.migrations && d.migrations.length) {
@@ -214,39 +217,49 @@ export function analyser({ github, notion, supabase }, maintenant) {
       : { niveau: "ok", texte: "À jour" });
   }
 
-  // --- Notion
-  const ORDRE = ["En cours", "À faire", "En attente", "Plus tard", ""];
-  let notionVue = { ok: notion.ok, erreur: notion.erreur, lignes: [], compte: {} };
-  if (notion.ok) {
-    const tous = notion.donnees;
-    for (const p of tous) notionVue.compte[p.statut || "Sans statut"] = (notionVue.compte[p.statut || "Sans statut"] || 0) + 1;
-    notionVue.total = tous.length;
-    notionVue.lignes = tous.filter((p) => p.statut !== "Terminé")
-      .sort((a, b) => ORDRE.indexOf(a.statut) - ORDRE.indexOf(b.statut) || (a.echeance || "9") .localeCompare(b.echeance || "9"))
+  // --- Projets et registre (dossier pilotage/ de Kasbah-Analytique)
+  const ORDRE = ["En cours", "À faire", "En attente", "Plus tard", "Terminé", ""];
+  let vueProjets = { ok: registre.ok, erreur: registre.erreur, lignes: [], compte: {}, total: 0 };
+  let faits = [];
+  if (registre.ok) {
+    const tous = lireProjets(registre.donnees.projets);
+    faits = lireFaits(registre.donnees.mois);
+    vueProjets.total = tous.length;
+    for (const p of tous) vueProjets.compte[p.statut || "Sans statut"] = (vueProjets.compte[p.statut || "Sans statut"] || 0) + 1;
+    vueProjets.lignes = tous
+      .filter((p) => p.statut !== "Terminé")
+      .sort((a, b) => ORDRE.indexOf(a.statut) - ORDRE.indexOf(b.statut))
       .map((p) => {
         let niveau = p.statut === "En cours" ? "info" : "idle";
-        let echeanceTexte = p.echeance ? jourFr(p.echeance) : "—";
-        if (p.echeance && p.statut !== "Plus tard") {
-          const n = joursEntre(ici.jour, p.echeance);
-          if (n < 0) { niveau = "warn"; echeanceTexte += " · dépassée"; }
-          else if (n <= 10) {
-            niveau = "warn"; echeanceTexte += ` · dans ${n} j`;
-            alerte("warn", `${p.nom} : échéance le ${jourFr(p.echeance)}`, `Projet Notion au statut « ${p.statut || "sans statut"} », dans ${n} jour(s).`, "Notion");
+        let echeanceTexte = p.echeance && p.echeance !== "—" ? p.echeance : "—";
+        const jour = (p.echeance || "").match(/(\d{2})\/(\d{2})\/(\d{4})/);
+        if (jour && p.statut !== "Plus tard") {
+          const n = joursEntre(ici.jour, `${jour[3]}-${jour[2]}-${jour[1]}`);
+          if (n < 0) {
+            niveau = "warn";
+            if (!/dépassée/i.test(echeanceTexte)) echeanceTexte += " · dépassée";
+            alerte("warn", `${p.nom} : échéance dépassée depuis ${-n} jour(s)`, `Projet au statut « ${p.statut || "sans statut"} », échéance au ${jour[0]}.`, "Projets");
+          } else if (n <= 10) {
+            niveau = "warn";
+            echeanceTexte += ` · dans ${n} j`;
+            alerte("warn", `${p.nom} : échéance le ${jour[1]}/${jour[2]}`, `Projet au statut « ${p.statut || "sans statut"} », dans ${n} jour(s).`, "Projets");
           }
-        }
-        if (p.priorite === "Urgent" && p.statut !== "En cours") {
-          niveau = "crit";
-          alerte("warn", `${p.nom} : marqué urgent, pas commencé`, `Statut « ${p.statut || "sans statut"} » dans Notion.`, "Notion");
         }
         return { ...p, niveau, echeanceTexte };
       });
+    // Un incident non suivi d'une livraison sur le même projet reste ouvert
+    const recents = faits.filter((f) => joursEntre(f.date, ici.jour) <= 30);
+    for (const f of recents.filter((x) => x.nature === "Incident" || x.nature === "Risque")) {
+      const reparé = recents.some((x) => x.nature === "Livraison" && x.projet === f.projet && x.date > f.date);
+      if (!reparé) alerte("warn", `${f.nature} ouvert : ${f.texte.slice(0, 80)}${f.texte.length > 80 ? "…" : ""}`, `${f.date_fr} · ${f.projet || f.domaine}${f.effet ? ` · ${f.effet}` : ""}`, "Registre");
+    }
   }
 
   // --- Sources mal configurées
-  for (const [nom, s] of [["GitHub", github], ["Notion", notion], ["Supabase", supabase]]) {
-    if (!s.ok) alerte("info", `${nom} n'est pas lu`, s.erreur, "Configuration");
+  for (const [nom, s] of [["GitHub", github], ["Registre", registre], ["Supabase", supabase]]) {
+    if (!s.ok) alerte("info", `${nom} n'est pas lu`, s.erreur, "Configuration", true);
   }
-  for (const d of depots) if (!d.ok) alerte("info", `${d.nom} n'est pas lu`, d.erreur, "GitHub");
+  for (const d of depots) if (!d.ok) alerte("info", `${d.nom} n'est pas lu`, d.erreur, "GitHub", true);
 
   const rang = { crit: 0, warn: 1, info: 2 };
   alertes.sort((a, b) => rang[a.niveau] - rang[b.niveau]);
@@ -256,9 +269,11 @@ export function analyser({ github, notion, supabase }, maintenant) {
     compteurs: { crit: alertes.filter((a) => a.niveau === "crit").length, warn: alertes.filter((a) => a.niveau === "warn").length },
     flux,
     projets,
-    notion: notionVue,
+    projets_ouverts: vueProjets,
+    faits,
+    faits_par_domaine: parDomaine(faits, ici.jour, 30),
     chiffres: sb ? sb.chiffres : null,
     occupation: sb ? sb.occupation : null,
-    etat: { github: github.ok, notion: notion.ok, supabase: supabase.ok },
+    etat: { github: github.ok, registre: registre.ok, supabase: supabase.ok },
   };
 }

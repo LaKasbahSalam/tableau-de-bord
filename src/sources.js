@@ -15,12 +15,12 @@ export const DEPOTS = [
 ];
 
 export async function lireTout(env) {
-  const [github, notion, supabase] = await Promise.all([
+  const [github, registre, supabase] = await Promise.all([
     lireGithub(env).catch(echec),
-    lireNotion(env).catch(echec),
+    lireRegistre(env).catch(echec),
     lireSupabase(env).catch(echec),
   ]);
-  return { github, notion, supabase };
+  return { github, registre, supabase };
 }
 
 const echec = (e) => ({ ok: false, erreur: String(e && e.message ? e.message : e) });
@@ -80,40 +80,42 @@ async function lireGithub(env) {
   return { ok: true, donnees: depots };
 }
 
-// ---------------------------------------------------------------- Notion
+// ---------------------------------------------------------------- Registre
 
-async function lireNotion(env) {
-  if (!env.NOTION_TOKEN) return { ok: false, manque: "NOTION_TOKEN", erreur: "Clé Notion pas encore ajoutée." };
-  const r = await fetch(`https://api.notion.com/v1/databases/${env.NOTION_BASE_PROJETS}/query`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.NOTION_TOKEN}`,
-      "Notion-Version": "2022-06-28",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ page_size: 100 }),
-  });
-  if (r.status === 404) return { ok: false, erreur: "Notion ne trouve pas la base Projets : relie l'intégration à la page « Hôtel Fès — Project Hub » (••• → Connexions)." };
-  if (!r.ok) throw new Error(`Notion ${r.status}`);
-  const j = await r.json();
-  const texte = (p) => {
-    if (!p) return "";
-    if (p.type === "title") return p.title.map((t) => t.plain_text).join("");
-    if (p.type === "rich_text") return p.rich_text.map((t) => t.plain_text).join("");
-    if (p.type === "select") return p.select ? p.select.name : "";
-    if (p.type === "status") return p.status ? p.status.name : "";
-    return "";
+/**
+ * `pilotage/` du dépôt Kasbah-Analytique : les projets et les faits, écrits
+ * par Claude. Même clé GitHub que le reste — rien de plus à configurer.
+ */
+async function lireRegistre(env) {
+  if (!env.GITHUB_TOKEN) return { ok: false, manque: "GITHUB_TOKEN", erreur: "Clé GitHub pas encore ajoutée : le registre est dans le dépôt Kasbah-Analytique." };
+  const org = env.GITHUB_ORG || "LaKasbahSalam";
+  const base = `/repos/${org}/Kasbah-Analytique/contents/pilotage`;
+  const gh = async (chemin, brut = false) => {
+    const r = await fetch(`https://api.github.com${chemin}`, {
+      headers: {
+        Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+        Accept: brut ? "application/vnd.github.raw" : "application/vnd.github+json",
+        "User-Agent": "kasbah-tableau-de-bord",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error(`GitHub ${r.status} sur ${chemin}`);
+    return brut ? r.text() : r.json();
   };
-  const projets = j.results.map((pg) => ({
-    nom: texte(pg.properties["Nom"]),
-    statut: texte(pg.properties["Statut"]),
-    priorite: texte(pg.properties["Priorite"]),
-    domaine: texte(pg.properties["Area"]),
-    responsable: texte(pg.properties["Owner"]),
-    echeance: pg.properties["Deadline"] && pg.properties["Deadline"].date ? pg.properties["Deadline"].date.start : null,
-    url: pg.url,
-  }));
-  return { ok: true, donnees: projets };
+
+  const dossier = await gh(base);
+  if (!dossier) return { ok: false, erreur: "Le dossier `pilotage/` n'existe pas encore dans le dépôt Kasbah-Analytique (ou il n'est pas poussé)." };
+
+  const mois = dossier
+    .filter((f) => f.type === "file" && /^\d{4}-\d{2}\.md$/.test(f.name))
+    .map((f) => f.name).sort().reverse().slice(0, 4); // 4 derniers mois
+
+  const [projets, ...contenus] = await Promise.all([
+    gh(`${base}/projets.md`, true),
+    ...mois.map((n) => gh(`${base}/${n}`, true)),
+  ]);
+  return { ok: true, donnees: { projets: projets || "", mois: contenus.filter(Boolean) } };
 }
 
 // ---------------------------------------------------------------- Supabase

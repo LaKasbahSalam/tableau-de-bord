@@ -7,14 +7,13 @@
   "vars": {
     // Projet Supabase « Kasbah Analytics » (réf. publique, pas un secret)
     "SUPABASE_URL": "https://sebwcxxoxpfbliypzokp.supabase.co",
-    "NOTION_BASE_PROJETS": "46842588753e4d359861bc133bf1f272",
     "GITHUB_ORG": "LaKasbahSalam"
   }
   // Secrets, posés dans Cloudflare (Workers → kasbah-tableau-de-bord →
   // Paramètres → Variables et secrets), jamais dans ce fichier :
   //   MOT_DE_PASSE          ouvre la page
   //   GITHUB_TOKEN          jeton GitHub, lecture seule sur les 4 dépôts
-  //   NOTION_TOKEN          intégration Notion reliée au Project Hub
+  //   MOT_DE_PASSE_INVESTISSEUR  ouvre la vue /investisseur, en lecture seule
   //   SUPABASE_ANON_KEY     clé publique (anon / publishable) de Kasbah Analytics
   //   SUPABASE_CLE_TABLEAU  clé rendue par la migration 20260922090000_tableau_de_bord.sql
 }

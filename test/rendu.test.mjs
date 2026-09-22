@@ -35,6 +35,37 @@ const reponses = {
   "/repos/LaKasbahSalam/snack-repas/commits": [{ sha: "2883493000", html_url: "#", commit: { message: "Journal Snack : client, vendeur", committer: { date: il_y_a(30) } } }],
   "/repos/LaKasbahSalam/snack-repas/branches": [{ name: "main" }],
   "/repos/LaKasbahSalam/snack-repas/contents/TASKS.md": lire("Snack & Repas/TASKS.md"),
+  "/repos/LaKasbahSalam/Kasbah-Analytique/contents/pilotage": [
+    { type: "file", name: "projets.md" }, { type: "file", name: "2026-09.md" }, { type: "file", name: "README.md" },
+  ],
+  "/repos/LaKasbahSalam/Kasbah-Analytique/contents/pilotage/projets.md": `# Projets
+
+## Tableau de bord Kasbah · En cours · Outils · Claude
+
+**Échéance :** —
+
+La page qui réunit les chiffres et l'état des outils.
+
+## Maintenance d'été de l'hôtel · À faire · Coûts · —
+
+**Échéance :** ${jour(-8).slice(8, 10)}/${jour(-8).slice(5, 7)}/${jour(-8).slice(0, 4)}
+
+## Site internet · Terminé · Clients · Karim
+`,
+  "/repos/LaKasbahSalam/Kasbah-Analytique/contents/pilotage/2026-09.md": `# Septembre 2026
+
+### ${jour(1).slice(8, 10)}/${jour(1).slice(5, 7)}/${jour(1).slice(0, 4)} · Revenus · Décision · Snack
+
+**Effet** : sur un panini à 40 DH, le vendeur touche 16,67 DH et la maison 5 DH.
+
+Le vendeur touche une prime sur ce qu'il vend.
+
+### ${jour(3).slice(8, 10)}/${jour(3).slice(5, 7)}/${jour(3).slice(0, 4)} · Outils · Incident · Snack
+
+**Effet** : aucune vente n'a pu aboutir pendant une soirée.
+
+La fonction de vente échouait à chaque appel.
+`,
   // tresorerie : dépôt pas encore créé -> 404
 };
 
@@ -58,22 +89,13 @@ const supabase = {
     { source: "v16", derniere_reussite: il_y_a(60), derniere_tentative: il_y_a(9), statut: "erreur", lignes: 40 },
   ],
   rappels: [
-    { jour: jour(1), moment: "matin", envoye_at: il_y_a(30), blocs: ["departs"] },
-    { jour: jour(1), moment: "soir", envoye_at: il_y_a(17), blocs: [] },
+    { jour: jour(0), moment: "matin", envoye_at: il_y_a(6), blocs: ["departs"] },
+    { jour: jour(0), moment: "soir", envoye_at: il_y_a(2), blocs: [] },
   ],
   tables_inconnues: ["snack_ventes"],
   occupation: ["2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09"]
     .map((m, i) => ({ mois: m + "-01", taux: [0.5, 0.4, 0.45, 0.3, 0.6, 0.856, 0.682, 0.541, 0.404, 0.19, 0.178, 0.25][i], en_cours: i === 11 })),
 };
-
-const titre = (t) => ({ type: "title", title: [{ plain_text: t }] });
-const choix = (t) => ({ type: "select", select: t ? { name: t } : null });
-const notion = { results: [
-  { url: "#1", properties: { Nom: titre("Maintenance d'été de l'hôtel"), Statut: choix("À faire"), Deadline: { date: { start: jour(-8) } }, Area: choix("Confort"), Priorite: choix(null) } },
-  { url: "#2", properties: { Nom: titre("Establish Volonteer System"), Statut: choix("À faire"), Priorite: choix("Urgent"), Owner: { type: "rich_text", rich_text: [{ plain_text: "Karim" }] } } },
-  { url: "#3", properties: { Nom: titre("Outil d'analyse hôtel"), Statut: choix("En cours") } },
-  { url: "#4", properties: { Nom: titre("Site internet"), Statut: choix("Terminé") } },
-] };
 
 globalThis.fetch = async (url, opts = {}) => {
   const u = new URL(url);
@@ -83,7 +105,6 @@ globalThis.fetch = async (url, opts = {}) => {
     if (r === undefined) return new Response("", { status: 404 });
     return typeof r === "string" ? new Response(r) : json(r);
   }
-  if (u.host === "api.notion.com") return json(notion);
   if (u.pathname.endsWith("/rpc/tableau_de_bord")) {
     return JSON.parse(opts.body).p_cle === "cle-ok" ? json(supabase) : new Response('{"message":"clé refusée"}', { status: 400 });
   }
@@ -91,8 +112,8 @@ globalThis.fetch = async (url, opts = {}) => {
 };
 
 const env = {
-  MOT_DE_PASSE: "sesame", GITHUB_TOKEN: "x", NOTION_TOKEN: "x", SUPABASE_ANON_KEY: "sb_publishable_x", SUPABASE_CLE_TABLEAU: "cle-ok",
-  SUPABASE_URL: "https://exemple.supabase.co", NOTION_BASE_PROJETS: "abc", GITHUB_ORG: "LaKasbahSalam",
+  MOT_DE_PASSE: "sesame", MOT_DE_PASSE_INVESTISSEUR: "associe", GITHUB_TOKEN: "x", SUPABASE_ANON_KEY: "sb_publishable_x", SUPABASE_CLE_TABLEAU: "cle-ok",
+  SUPABASE_URL: "https://exemple.supabase.co", GITHUB_ORG: "LaKasbahSalam",
 };
 
 let echecs = 0;
@@ -128,12 +149,12 @@ verifier(page.includes("creation-reservation"), "branche en attente signalée");
 verifier(page.includes("déjà fusionnée"), "branche fusionnée repérée");
 verifier(page.includes("tresorerie") && page.includes("introuvable"), "dépôt absent : message clair");
 verifier(page.includes("snack_ventes"), "table inconnue signalée");
-verifier(!page.includes("Site internet"), "projets Notion terminés masqués");
-verifier(page.includes("Maintenance d&#39;été") && page.includes("dans 8 j"), "échéance proche");
+verifier(!page.includes("Site internet"), "projets terminés masqués");
+verifier(page.includes("Maintenance d&#39;été") && page.includes("dans 8 j"), "échéance proche signalée");
 verifier(!/<script/i.test(page), "aucun script dans la page");
 
 r = await worker.fetch(new Request("https://t.dev/?rafraichir=1", { headers: { Cookie: cookie } }),
-  { ...env, GITHUB_TOKEN: "", NOTION_TOKEN: "", SUPABASE_CLE_TABLEAU: "mauvaise" });
+  { ...env, GITHUB_TOKEN: "", SUPABASE_CLE_TABLEAU: "mauvaise" });
 const vide = await r.text();
 verifier(vide.includes("Pas encore de chiffres"), "sans Supabase : la bande de chiffres l'explique");
 verifier(r.status === 200 && vide.includes("Clé GitHub pas encore ajoutée") && vide.includes("refuse la clé"), "sans clés : page partielle avec explications");
@@ -159,12 +180,39 @@ const exemple = `# Tâches
 `;
 const vueExemple = analyser({
   github: { ok: true, donnees: [{ nom: "KasbahCalendar", sous_titre: "", ok: true, principale: "main", commits: [], branches: [], taches: exemple, migrations: [] }] },
-  notion: { ok: false, erreur: "" }, supabase: { ok: false, erreur: "" },
+  registre: { ok: false, erreur: "" }, supabase: { ok: false, erreur: "" },
 }, new Date());
 const bloquantes = vueExemple.alertes.filter((a) => a.niveau === "crit");
 verifier(bloquantes.length === 1 && bloquantes[0].titre.startsWith("Snack : mise en service"), "une migration à appliquer devient une alerte bloquante");
 verifier(vueExemple.projets[0].ouverts.length === 2, "les deux tâches ouvertes sont reprises, la tâche faite non");
 
+// --- La vue de l'associé
+r = await worker.fetch(new Request("https://t.dev/investisseur"), env);
+verifier(r.status === 401 && (await r.text()).includes("/investisseur/connexion"), "vue associé : mot de passe demandé, sur son propre formulaire");
+
+let fi = new FormData(); fi.set("mot_de_passe", "sesame");
+r = await worker.fetch(new Request("https://t.dev/investisseur/connexion", { method: "POST", body: fi }), env);
+verifier(r.status === 401, "le mot de passe de l'équipe n'ouvre pas la vue associé");
+
+fi = new FormData(); fi.set("mot_de_passe", "associe");
+r = await worker.fetch(new Request("https://t.dev/investisseur/connexion", { method: "POST", body: fi }), env);
+const cookieInv = (r.headers.get("Set-Cookie") || "").split(";")[0];
+verifier(r.status === 303 && cookieInv.startsWith("kasbah_inv="), "vue associé : cookie posé");
+
+// ?rafraichir : la lecture gardée en mémoire est celle du test précédent, sans clés
+r = await worker.fetch(new Request("https://t.dev/investisseur?rafraichir=1", { headers: { Cookie: cookieInv } }), env);
+const inv = await r.text();
+verifier(r.status === 200 && inv.includes("Kasbah — pilotage"), "vue associé rendue");
+verifier(inv.includes("panini à 40 DH"), "le registre y est, avec l'effet en tête");
+verifier(inv.includes("Décision") && inv.includes("Incident"), "les faits sont classés par nature");
+verifier(inv.replace(/[  ]/g, " ").includes("110 000 DH"), "les chiffres y sont : l'associé voit tout");
+verifier(!inv.includes("creation-reservation") && !inv.includes("migration"), "aucun détail technique dans la vue associé");
+verifier(!inv.includes("Relire maintenant"), "pas de bouton de relecture : la vue est en lecture seule");
+
+r = await worker.fetch(new Request("https://t.dev/investisseur", { headers: { Cookie: cookie } }), env);
+verifier(r.status === 401, "le cookie de l'équipe n'ouvre pas la vue associé");
+
 if (process.argv[2]) fs.writeFileSync(process.argv[2], page);
+if (process.argv[3]) fs.writeFileSync(process.argv[3], inv);
 console.log(echecs ? `\n${echecs} échec(s)` : "\nTout est bon.");
 process.exit(echecs ? 1 : 0);

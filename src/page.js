@@ -102,6 +102,20 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 .kpi dt + dd{color:var(--ink)}
 .kpi dt:last-of-type ~ dd{color:var(--ink-2)}
 .sous-bande{margin:10px 0 0;font-size:13px;color:var(--ink-3)}
+.faits{list-style:none;margin:0;padding:0;display:grid;gap:0;background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;counter-reset:f}
+.faits li{display:grid;grid-template-columns:120px 1fr;gap:6px 18px;padding:16px 18px;border-top:1px solid var(--line)}
+.faits li:first-child{border-top:0}
+.faits .quand{display:grid;gap:2px;align-content:start}
+.faits .quand b{font-family:var(--mono);font-weight:500;font-size:14px;font-variant-numeric:tabular-nums}
+.faits .quand span{font-size:11.5px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3)}
+.faits .etiq{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.faits .proj{font-size:12px;color:var(--ink-3);font-family:var(--mono)}
+.faits p{margin:0;font-size:14px;color:var(--ink-2)}
+.faits .effet{color:var(--ink);font-weight:500;margin-bottom:4px}
+@media (max-width:640px){.faits li{grid-template-columns:1fr}}
+.dom{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.dom span{font-size:12.5px;font-family:var(--mono);color:var(--ink-2);background:var(--sunk);border-radius:999px;padding:4px 10px}
+.dom b{font-weight:500;color:var(--ink)}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px}
 .chart svg{width:100%;height:auto;display:block}
 .chart text{font-family:var(--mono);font-size:11px;fill:var(--ink-3)}
@@ -136,11 +150,11 @@ const tete = (titre) => `<!doctype html><html lang="fr"><head><meta charset="utf
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>${CSS}</style></head><body>`;
 
-export function pageConnexion({ erreur, bloque }) {
-  return `${tete("Tableau de bord Kasbah")}<div class="login">
-<form method="post" action="/connexion">
+export function pageConnexion({ erreur, bloque, titre = "Tableau de bord Kasbah", action = "/connexion" }) {
+  return `${tete(titre)}<div class="login">
+<form method="post" action="${esc(action)}">
   <div class="eyebrow">La Kasbah Salam · Fès</div>
-  <h1 style="font-size:28px">Tableau de bord Kasbah</h1>
+  <h1 style="font-size:28px">${esc(titre)}</h1>
   ${erreur ? `<p class="err">${esc(erreur)}</p>` : ""}
   ${bloque ? "" : `<label for="mdp" class="eyebrow">Mot de passe</label>
   <input id="mdp" name="mot_de_passe" type="password" autocomplete="current-password" required autofocus>
@@ -245,17 +259,29 @@ function occupationHtml(occ) {
   <div class="legend"><span>en %, vue <span class="mono">v_occupation</span></span><span>barre claire = mois en cours</span></div></div></section>`;
 }
 
-function notionHtml(n) {
-  if (!n.ok) return `<div class="panne">${md(n.erreur || "Notion n'est pas lu.")}</div>`;
+function projetsHtml(p) {
+  if (!p.ok) return `<div class="panne">${md(p.erreur || "Le registre n'est pas lu.")}</div>`;
   const ordre = ["En cours", "À faire", "En attente", "Plus tard", "Terminé", "Sans statut"];
-  const compte = ordre.filter((k) => n.compte[k]).map((k) => `<span><b>${n.compte[k]}</b> ${esc(k.toLowerCase())}</span>`).join("");
+  const compte = ordre.filter((k) => p.compte[k]).map((k) => `<span><b>${p.compte[k]}</b> ${esc(k.toLowerCase())}</span>`).join("");
   return `<div class="compte">${compte}</div><div class="tbl-scroll"><table>
     <thead><tr><th>Projet</th><th>Statut</th><th>Domaine</th><th>Responsable</th><th>Échéance</th></tr></thead>
-    <tbody>${n.lignes.map((p) => `<tr>
-      <td><a href="${esc(p.url)}">${esc(p.nom || "Sans titre")}</a></td>
-      <td><span class="pill p-${p.niveau}">${esc(p.statut || "Sans statut")}${p.priorite === "Urgent" ? " · urgent" : ""}</span></td>
-      <td>${esc(p.domaine || "—")}</td><td>${esc(p.responsable || "—")}</td>
-      <td class="num">${esc(p.echeanceTexte)}</td></tr>`).join("")}</tbody></table></div>`;
+    <tbody>${p.lignes.map((x) => `<tr>
+      <td><b>${esc(x.nom)}</b>${x.texte ? `<br><small>${esc(x.texte.slice(0, 140))}${x.texte.length > 140 ? "…" : ""}</small>` : ""}</td>
+      <td><span class="pill p-${x.niveau}">${esc(x.statut || "Sans statut")}</span></td>
+      <td>${esc(x.domaine || "—")}</td><td>${esc(x.responsable || "—")}</td>
+      <td class="num">${esc(x.echeanceTexte)}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+/** Le registre : ce qui a été fait, classé. */
+function faitsHtml(faits, limite = 40) {
+  if (!faits || !faits.length) return `<div class="panne">Rien d'enregistré pour l'instant.</div>`;
+  return `<ol class="faits">${faits.slice(0, limite).map((f) => `<li>
+    <div class="quand"><b>${esc(f.date_fr)}</b><span>${esc(f.domaine)}</span></div>
+    <div class="quoi">
+      <div class="etiq"><span class="pill p-${f.nature === "Incident" || f.nature === "Risque" ? "warn" : f.nature === "Décision" ? "info" : "ok"}">${esc(f.nature)}</span>${f.projet ? `<span class="proj">${esc(f.projet)}</span>` : ""}</div>
+      ${f.effet ? `<p class="effet">${md(f.effet)}</p>` : ""}
+      <p>${md(f.texte)}</p>
+    </div></li>`).join("")}</ol>`;
 }
 
 export function pageTableau(v, lu) {
@@ -268,7 +294,7 @@ export function pageTableau(v, lu) {
     <div class="eyebrow">La Kasbah Salam · Fès</div>
     <h1>Tableau de bord Kasbah</h1>
     <p>Tous les outils qui font tourner l'hôtel, sur une seule page : ce qui demande une action, les tâches automatiques, et où en est chaque projet.</p>
-    <div class="srcs">${src("GitHub", v.etat.github)}${src("Notion", v.etat.notion)}${src("Supabase", v.etat.supabase)}</div>
+    <div class="srcs">${src("GitHub", v.etat.github)}${src("Registre", v.etat.registre)}${src("Supabase", v.etat.supabase)}</div>
   </div>
   <div class="stamp">
     <div><span class="eyebrow">Lu le ${jourFr(l.jour)} à</span><b>${heure}</b></div>
@@ -298,10 +324,62 @@ ${chiffresHtml(v.chiffres)}
 ${occupationHtml(v.occupation)}
 
 <section aria-labelledby="h-notion">
-  <div class="section-head"><h2 id="h-notion">Les projets de Notion encore ouverts</h2><p>Hôtel Fès — Project Hub · hors terminés</p></div>
-  ${notionHtml(v.notion)}
+  <div class="section-head"><h2 id="h-notion">Les projets ouverts</h2><p>Registre : <span class="mono">pilotage/projets.md</span> du dépôt Kasbah-Analytique</p></div>
+  ${projetsHtml(v.projets_ouverts)}
 </section>
 
 <footer><p>Lu en direct dans GitHub, Notion et Kasbah Analytics, en lecture seule. Les lectures sont gardées 3 minutes.</p><a class="btn" href="/deconnexion">Se déconnecter</a></footer>
+</div></body></html>`;
+}
+
+
+/**
+ * La vue de l'associé à distance : les chiffres, ce qui s'est fait, les
+ * projets, les points de vigilance. Pas de branche, pas de migration —
+ * rien qu'il ne puisse lire sans être dans le code.
+ */
+export function pageInvestisseur(v, lu) {
+  const l = local(lu);
+  const heure = `${String(l.h).padStart(2, "0")}h${String(l.m).padStart(2, "0")}`;
+  const vigilance = v.alertes.filter((a) => a.niveau !== "info" && !a.technique);
+  const domaines = Object.entries(v.faits_par_domaine || {}).sort((a, b) => b[1] - a[1]);
+  return `${tete("Kasbah — pilotage")}<div class="wrap">
+<header class="top">
+  <div>
+    <div class="eyebrow">La Kasbah Salam · Fès</div>
+    <h1>Kasbah — pilotage</h1>
+    <p>Où en est l'hôtel : les chiffres de l'exercice et du mois, ce qui a été fait, décidé ou cassé, et les projets en cours. Lu en direct, rien n'est saisi à la main.</p>
+  </div>
+  <div class="stamp">
+    <div><span class="eyebrow">Lu le ${jourFr(l.jour)} à</span><b>${heure}</b></div>
+  </div>
+</header>
+
+${chiffresHtml(v.chiffres)}
+
+${occupationHtml(v.occupation)}
+
+<section aria-labelledby="h-faits">
+  <div class="section-head"><h2 id="h-faits">Ce qui s'est fait</h2>
+    <p>Chaque fait est classé par domaine et par nature · l'effet est en tête</p></div>
+  ${domaines.length ? `<div class="dom">${domaines.map(([d, n]) => `<span><b>${n}</b> ${esc(d.toLowerCase())}</span>`).join("")}<span>sur 30 jours</span></div>` : ""}
+  ${faitsHtml(v.faits)}
+</section>
+
+<section aria-labelledby="h-vig">
+  <div class="section-head"><h2 id="h-vig">Points de vigilance</h2><p>Ce qui reste ouvert aujourd'hui</p></div>
+  ${vigilance.length ? `<ul class="alerts">${vigilance.map((a) => `<li>
+    <span class="pill p-${a.niveau}">${PASTILLE[a.niveau]}</span>
+    <div class="what"><b>${md(a.titre)}</b>${a.detail ? `<p>${md(a.detail)}</p>` : ""}</div>
+    <span class="who">${esc(a.qui)}</span></li>`).join("")}</ul>`
+    : `<div class="alerts"><div class="vide">Rien d'ouvert aujourd'hui.</div></div>`}
+</section>
+
+<section aria-labelledby="h-proj-inv">
+  <div class="section-head"><h2 id="h-proj-inv">Les projets</h2><p>Hors terminés</p></div>
+  ${projetsHtml(v.projets_ouverts)}
+</section>
+
+<footer><p>Chiffres : compte de résultat du classeur de trésorerie et réservations Beds24, recopiés chaque nuit. Registre tenu au fil des séances de travail.</p><a class="btn" href="/deconnexion">Se déconnecter</a></footer>
 </div></body></html>`;
 }

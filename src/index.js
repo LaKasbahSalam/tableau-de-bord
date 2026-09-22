@@ -13,9 +13,10 @@
  */
 import { lireTout } from "./sources.js";
 import { analyser } from "./analyse.js";
-import { pageTableau, pageConnexion } from "./page.js";
+import { pageTableau, pageInvestisseur, pageConnexion } from "./page.js";
 
 const COOKIE = "kasbah_tdb";
+const COOKIE_INV = "kasbah_inv";
 const DUREE_CACHE_MS = 3 * 60 * 1000;
 let cache = null; // { quand, donnees }
 
@@ -23,7 +24,6 @@ let cache = null; // { quand, donnees }
 // l'éditeur de Cloudflare, sans wrangler.jsonc.
 const PAR_DEFAUT = {
   SUPABASE_URL: "https://sebwcxxoxpfbliypzokp.supabase.co",
-  NOTION_BASE_PROJETS: "46842588753e4d359861bc133bf1f272",
   GITHUB_ORG: "LaKasbahSalam",
 };
 
@@ -35,6 +35,33 @@ export default {
       .map(([k, v]) => [k, typeof v === "string" ? v.trim() : v]));
     const env = { ...PAR_DEFAUT, ...propre };
     const url = new URL(requete.url);
+
+    // Vue de l'associé : son propre lien, son propre mot de passe, en
+    // lecture seule. Elle ne montre ni branche ni migration.
+    if (url.pathname.startsWith("/investisseur")) {
+      if (!env.MOT_DE_PASSE_INVESTISSEUR) {
+        return html(pageConnexion({ titre: "Kasbah — pilotage", erreur: "Cette page n'a pas encore de mot de passe : ajoute le secret MOT_DE_PASSE_INVESTISSEUR dans Cloudflare.", bloque: true }), 503);
+      }
+      const jetonInv = await empreinte(env.MOT_DE_PASSE_INVESTISSEUR);
+      if (url.pathname === "/investisseur/connexion" && requete.method === "POST") {
+        const form = await requete.formData();
+        if ((await empreinte(String(form.get("mot_de_passe") || ""))) !== jetonInv) {
+          return html(pageConnexion({ titre: "Kasbah — pilotage", action: "/investisseur/connexion", erreur: "Mot de passe incorrect." }), 401);
+        }
+        return new Response(null, {
+          status: 303,
+          headers: {
+            Location: "/investisseur",
+            "Set-Cookie": `${COOKIE_INV}=${jetonInv}; Path=/investisseur; HttpOnly; Secure; SameSite=Lax; Max-Age=${60 * 60 * 24 * 60}`,
+          },
+        });
+      }
+      if (lireCookie(requete, COOKIE_INV) !== jetonInv) {
+        return html(pageConnexion({ titre: "Kasbah — pilotage", action: "/investisseur/connexion" }), 401);
+      }
+      const donnees = await lues(env, url.searchParams.has("rafraichir"));
+      return html(pageInvestisseur(analyser(donnees, new Date()), new Date(cache.quand)));
+    }
 
     if (!env.MOT_DE_PASSE) {
       return html(pageConnexion({ erreur: "La page n'a pas encore de mot de passe : ajoute le secret MOT_DE_PASSE dans Cloudflare.", bloque: true }), 503);
@@ -58,7 +85,11 @@ export default {
     if (url.pathname === "/deconnexion") {
       return new Response(null, {
         status: 303,
-        headers: { Location: "/", "Set-Cookie": `${COOKIE}=; Path=/; Max-Age=0` },
+        headers: [
+          ["Location", "/"],
+          ["Set-Cookie", `${COOKIE}=; Path=/; Max-Age=0`],
+          ["Set-Cookie", `${COOKIE_INV}=; Path=/investisseur; Max-Age=0`],
+        ],
       });
     }
 
@@ -68,14 +99,18 @@ export default {
 
     if (url.pathname !== "/") return new Response("Introuvable", { status: 404 });
 
-    const forcer = url.searchParams.has("rafraichir");
-    if (forcer || !cache || Date.now() - cache.quand > DUREE_CACHE_MS) {
-      cache = { quand: Date.now(), donnees: await lireTout(env) };
-    }
-    const vue = analyser(cache.donnees, new Date());
-    return html(pageTableau(vue, new Date(cache.quand)));
+    const donnees = await lues(env, url.searchParams.has("rafraichir"));
+    return html(pageTableau(analyser(donnees, new Date()), new Date(cache.quand)));
   },
 };
+
+/** Les lectures sont gardées 3 minutes, pour les deux vues. */
+async function lues(env, forcer) {
+  if (forcer || !cache || Date.now() - cache.quand > DUREE_CACHE_MS) {
+    cache = { quand: Date.now(), donnees: await lireTout(env) };
+  }
+  return cache.donnees;
+}
 
 function html(corps, status = 200) {
   return new Response(corps, {
