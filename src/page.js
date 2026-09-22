@@ -194,23 +194,32 @@ function chiffresHtml(ch) {
   }
   const ex = ch.exercice || {}, mo = ch.mois || {};
   const moisNom = ch.mois_libelle ? MOIS_FR[Number(ch.mois_libelle.slice(5, 7)) - 1] : "mois en cours";
-  const lignes = [
-    { titre: "Revenu", aide: "Total des produits du CdR", ex: dh(ex.revenu), mo: dh(mo.revenu) },
-    { titre: "Résultat net", aide: "Produits moins charges", ex: dh(ex.resultat_net), mo: dh(mo.resultat_net) },
-    { titre: "Marge restauration", aide: "Ventes moins achats, breakfast + repas + snack", ex: dh(ex.marge_restauration), mo: dh(mo.marge_restauration) },
-    { titre: "ADR", aide: "Revenu chambres par place occupée", ex: dh(ex.adr), mo: dh(mo.adr) },
-    { titre: "Taux d'occupation", aide: "Places vendues sur 17 places", ex: pourcent(ex.taux_occupation), mo: pourcent(mo.taux_occupation) },
+  const exNom = `Exercice ${ch.exercice_libelle || "en cours"}`;
+  // Une tuile = un indicateur ; deux lignes, l'exercice puis le mois. L'ADR
+  // change de source selon la période (voir docs/LOOKER_STUDIO.md).
+  const tuiles = [
+    { titre: "Revenu", aide: "Total des produits du CdR",
+      lignes: [[exNom, dh(ex.revenu)], [moisNom, dh(mo.revenu)]] },
+    { titre: "Résultat net", aide: "Ligne « RÉSULTAT NET » du CdR",
+      lignes: [[exNom, dh(ex.resultat_net)], [moisNom, dh(mo.resultat_net)]] },
+    { titre: "Marge restauration", aide: "Ventes moins achats : breakfast, repas, snack",
+      lignes: [[exNom, dh(ex.marge_restauration)], [moisNom, dh(mo.marge_restauration)]] },
+    { titre: "ADR", aide: "Encaissé (CdR) sur les mois terminés ; facturé (appli) pour le mois en cours, seul juste avant la fin du mois",
+      lignes: [
+        [`${exNom} · encaissé`, dh(ex.adr_encaisse)],
+        [`${moisNom} · facturé`, dh(mo.adr_facture)],
+      ] },
+    { titre: "Taux d'occupation", aide: "Places vendues sur 17 places",
+      lignes: [[exNom, pourcent(ex.taux_occupation)], [moisNom, pourcent(mo.taux_occupation)]] },
   ];
   return `<section aria-labelledby="h-chiffres">
   <div class="section-head"><h2 id="h-chiffres">Les chiffres</h2>
     <p>Argent : compte de résultat de la V16, au mois de l'encaissement · le mois en cours est forcément partiel</p></div>
-  <div class="chiffres">${lignes.map((l) => `<article class="kpi">
-      <h3>${esc(l.titre)}</h3><p class="aide">${esc(l.aide)}</p>
-      <dl class="deux">
-        <dt>Exercice ${esc(ch.exercice_libelle || "en cours")}</dt><dd>${esc(l.ex)}</dd>
-        <dt>${esc(moisNom)}</dt><dd>${esc(l.mo)}</dd>
-      </dl></article>`).join("")}</div>
-  ${ex.mois_comptes ? `<p class="sous-bande">Exercice en cours : ${ex.mois_comptes} mois comptés, de ${esc(moisLong(ex.depuis))} à ${esc(moisLong(ex.jusqua))}.</p>` : ""}
+  <div class="chiffres">${tuiles.map((t) => `<article class="kpi">
+      <h3>${esc(t.titre)}</h3><p class="aide">${esc(t.aide)}</p>
+      <dl class="deux">${t.lignes.map(([label, valeur]) => `<dt>${esc(label)}</dt><dd>${esc(valeur)}</dd>`).join("")}</dl>
+    </article>`).join("")}</div>
+  ${ex.mois_comptes ? `<p class="sous-bande">Exercice en cours : ${ex.mois_comptes} mois comptés, de ${esc(moisLong(ex.depuis))} à ${esc(moisLong(ex.jusqua))}${ex.adr_encaisse_mois ? `, dont ${ex.adr_encaisse_mois} terminés pour l'ADR encaissé` : ""}.</p>` : ""}
 </section>`;
 }
 

@@ -44,10 +44,12 @@ const supabase = {
     exercice_libelle: "2026-2027",
     mois_libelle: new Date().toISOString().slice(0, 7),
     exercice: { revenu: 110000, resultat_net: 15000, marge_restauration: 8500, ventes_restauration: 25000,
-      revenu_chambres: 83000, places_vendues: 550, capacite: 1564, adr: 150.91, taux_occupation: 0.3517,
+      places_vendues: 550, capacite: 1564, taux_occupation: 0.3517,
+      adr_encaisse: 141.54, adr_encaisse_mois: 2, adr_facture: 174.55, adr_facture_mois: 2,
       mois_comptes: 3, depuis: "2026-07-01", jusqua: "2026-09-01" },
     mois: { revenu: 20000, resultat_net: 2000, marge_restauration: 1500, ventes_restauration: 5000,
-      revenu_chambres: 15000, places_vendues: 100, capacite: 510, adr: 150, taux_occupation: 0.1961,
+      places_vendues: 100, capacite: 510, taux_occupation: 0.1961,
+      adr_encaisse: null, adr_encaisse_mois: 0, adr_facture: 220, adr_facture_mois: 1,
       mois_comptes: 1, depuis: "2026-09-01", jusqua: "2026-09-01" },
   },
   sources: [
@@ -118,7 +120,8 @@ const nombres = page.replace(/[  ]/g, " ");
 verifier(nombres.includes("110 000 DH") && nombres.includes("20 000 DH"), "revenu : exercice et mois en cours");
 verifier(nombres.includes("15 000 DH") && nombres.includes("2 000 DH"), "résultat net sur les deux périodes");
 verifier(nombres.includes("8 500 DH") && nombres.includes("1 500 DH"), "marge restauration sur les deux périodes");
-verifier(page.includes("151 DH") && page.includes("150 DH"), "ADR sur les deux périodes");
+verifier(nombres.includes("142 DH") && nombres.includes("220 DH"), "ADR : encaissé sur l'exercice, facturé sur le mois");
+verifier(/encaissé<\/dt>/.test(page) && /facturé<\/dt>/.test(page), "chaque ADR dit d'où il vient");
 verifier(page.includes("35,2 %") && page.includes("19,6 %"), "taux d'occupation sur les deux périodes");
 verifier(page.includes("Exercice 2026-2027"), "libellé de l'exercice");
 verifier(page.includes("creation-reservation"), "branche en attente signalée");
