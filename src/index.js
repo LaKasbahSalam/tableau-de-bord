@@ -29,7 +29,11 @@ const PAR_DEFAUT = {
 
 export default {
   async fetch(requete, envBrut) {
-    const env = { ...PAR_DEFAUT, ...envBrut };
+    // Les valeurs collées dans Cloudflare traînent souvent un espace ou un
+    // retour à la ligne : on les enlève une bonne fois ici.
+    const propre = Object.fromEntries(Object.entries(envBrut || {})
+      .map(([k, v]) => [k, typeof v === "string" ? v.trim() : v]));
+    const env = { ...PAR_DEFAUT, ...propre };
     const url = new URL(requete.url);
 
     if (!env.MOT_DE_PASSE) {

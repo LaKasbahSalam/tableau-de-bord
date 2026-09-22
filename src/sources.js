@@ -132,7 +132,10 @@ async function lireSupabase(env) {
   if (r.status === 404) return { ok: false, erreur: "La fonction tableau_de_bord n'existe pas encore : lancer la migration 20260922090000_tableau_de_bord.sql dans l'éditeur SQL de Kasbah Analytics." };
   if (!r.ok) {
     const t = await r.text();
-    if (t.includes("clé refusée")) return { ok: false, erreur: "Supabase refuse la clé du tableau : recopier la valeur de SUPABASE_CLE_TABLEAU." };
+    if (t.includes("clé refusée")) {
+      const n = env.SUPABASE_CLE_TABLEAU.length;
+      return { ok: false, erreur: `Supabase refuse la clé du tableau : recopier la valeur de SUPABASE_CLE_TABLEAU (reçue : ${n} caractères, attendu : 64). Pour la réafficher : \`select cle from tableau_de_bord.cle;\` dans l'éditeur SQL.` };
+    }
     throw new Error(`Supabase ${r.status}`);
   }
   return { ok: true, donnees: await r.json() };
