@@ -1,0 +1,9 @@
+{
+  "name": "kasbah-tableau-de-bord",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test/rendu.test.mjs",
+    "deploy": "npx wrangler deploy"
+  }
+}
