@@ -92,6 +92,16 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 .todo small{display:block;color:var(--ink-3);font-size:12.5px}
 .label{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin-bottom:-4px}
 .note{font-size:13px;color:var(--ink-2);background:var(--sunk);border-radius:6px;padding:8px 10px;margin:0}
+.chiffres{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px 12px;display:grid;gap:2px;align-content:start}
+.kpi h3{font-size:15px}
+.kpi .aide{margin:0 0 8px;font-size:12px;color:var(--ink-3)}
+.kpi .deux{display:grid;grid-template-columns:auto 1fr;align-items:baseline;gap:4px 12px;margin:0;border-top:1px solid var(--line);padding-top:10px}
+.kpi dt{font-size:11.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em;font-family:var(--mono)}
+.kpi dd{margin:0;text-align:right;font-family:var(--mono);font-weight:500;font-size:20px;font-variant-numeric:tabular-nums;letter-spacing:-.02em;white-space:nowrap}
+.kpi dt + dd{color:var(--ink)}
+.kpi dt:last-of-type ~ dd{color:var(--ink-2)}
+.sous-bande{margin:10px 0 0;font-size:13px;color:var(--ink-3)}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px}
 .chart svg{width:100%;height:auto;display:block}
 .chart text{font-family:var(--mono);font-size:11px;fill:var(--ink-3)}
@@ -169,6 +179,41 @@ function projetHtml(p) {
   </article>`;
 }
 
+const MOIS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+
+const dh = (v) => (v == null ? "—" : `${Math.round(Number(v)).toLocaleString("fr-FR")} DH`);
+const moisLong = (iso) => (iso ? `${MOIS_FR[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}` : "—");
+const pourcent = (v) => (v == null ? "—" : `${(Number(v) * 100).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`);
+
+/** La bande du haut : cinq indicateurs, chacun sur l'exercice et sur le mois. */
+function chiffresHtml(ch) {
+  if (!ch || (!ch.exercice && !ch.mois)) {
+    return `<section aria-labelledby="h-chiffres">
+      <div class="section-head"><h2 id="h-chiffres">Les chiffres</h2></div>
+      <div class="panne">Pas encore de chiffres : ils viennent de Kasbah Analytics, qui n'est pas lu.</div></section>`;
+  }
+  const ex = ch.exercice || {}, mo = ch.mois || {};
+  const moisNom = ch.mois_libelle ? MOIS_FR[Number(ch.mois_libelle.slice(5, 7)) - 1] : "mois en cours";
+  const lignes = [
+    { titre: "Revenu", aide: "Total des produits du CdR", ex: dh(ex.revenu), mo: dh(mo.revenu) },
+    { titre: "Résultat net", aide: "Produits moins charges", ex: dh(ex.resultat_net), mo: dh(mo.resultat_net) },
+    { titre: "Marge restauration", aide: "Ventes moins achats, breakfast + repas + snack", ex: dh(ex.marge_restauration), mo: dh(mo.marge_restauration) },
+    { titre: "ADR", aide: "Revenu chambres par place occupée", ex: dh(ex.adr), mo: dh(mo.adr) },
+    { titre: "Taux d'occupation", aide: "Places vendues sur 17 places", ex: pourcent(ex.taux_occupation), mo: pourcent(mo.taux_occupation) },
+  ];
+  return `<section aria-labelledby="h-chiffres">
+  <div class="section-head"><h2 id="h-chiffres">Les chiffres</h2>
+    <p>Argent : compte de résultat de la V16, au mois de l'encaissement · le mois en cours est forcément partiel</p></div>
+  <div class="chiffres">${lignes.map((l) => `<article class="kpi">
+      <h3>${esc(l.titre)}</h3><p class="aide">${esc(l.aide)}</p>
+      <dl class="deux">
+        <dt>Exercice ${esc(ch.exercice_libelle || "en cours")}</dt><dd>${esc(l.ex)}</dd>
+        <dt>${esc(moisNom)}</dt><dd>${esc(l.mo)}</dd>
+      </dl></article>`).join("")}</div>
+  ${ex.mois_comptes ? `<p class="sous-bande">Exercice en cours : ${ex.mois_comptes} mois comptés, de ${esc(moisLong(ex.depuis))} à ${esc(moisLong(ex.jusqua))}.</p>` : ""}
+</section>`;
+}
+
 function occupationHtml(occ) {
   if (!occ || !occ.length) return "";
   const W = 520, H = 230, base = 190, haut = 10, g = 40, d = 510;
@@ -223,6 +268,8 @@ export function pageTableau(v, lu) {
     <a class="btn" href="/?rafraichir=1">Relire maintenant</a>
   </div>
 </header>
+
+${chiffresHtml(v.chiffres)}
 
 <section aria-labelledby="h-att">
   <div class="section-head"><h2 id="h-att">Ce qui demande une action</h2><p>Classé par gravité · qui est concerné, à droite</p></div>

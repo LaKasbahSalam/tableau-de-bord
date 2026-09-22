@@ -40,6 +40,16 @@ const reponses = {
 
 const supabase = {
   genere_le: new Date().toISOString(),
+  chiffres: {
+    exercice_libelle: "2026-2027",
+    mois_libelle: new Date().toISOString().slice(0, 7),
+    exercice: { revenu: 110000, resultat_net: 15000, marge_restauration: 8500, ventes_restauration: 25000,
+      revenu_chambres: 83000, places_vendues: 550, capacite: 1564, adr: 150.91, taux_occupation: 0.3517,
+      mois_comptes: 3, depuis: "2026-07-01", jusqua: "2026-09-01" },
+    mois: { revenu: 20000, resultat_net: 2000, marge_restauration: 1500, ventes_restauration: 5000,
+      revenu_chambres: 15000, places_vendues: 100, capacite: 510, adr: 150, taux_occupation: 0.1961,
+      mois_comptes: 1, depuis: "2026-09-01", jusqua: "2026-09-01" },
+  },
   sources: [
     { source: "beds24", derniere_reussite: il_y_a(8), derniere_tentative: il_y_a(8), statut: "ok", lignes: 298 },
     { source: "kasbah", derniere_reussite: il_y_a(8), derniere_tentative: il_y_a(8), statut: "ok", lignes: 3435 },
@@ -103,6 +113,14 @@ const page = await r.text();
 verifier(r.status === 200, "page rendue");
 verifier(/Envoi du CdR[\s\S]{0,400}En erreur/.test(page), "CdR en erreur signalé");
 verifier(page.includes("Solde absent à 21h"), "synchro 20h : solde absent détecté");
+verifier(page.indexOf("Les chiffres") < page.indexOf("Ce qui demande une action"), "les chiffres sont tout en haut");
+const nombres = page.replace(/[  ]/g, " ");
+verifier(nombres.includes("110 000 DH") && nombres.includes("20 000 DH"), "revenu : exercice et mois en cours");
+verifier(nombres.includes("15 000 DH") && nombres.includes("2 000 DH"), "résultat net sur les deux périodes");
+verifier(nombres.includes("8 500 DH") && nombres.includes("1 500 DH"), "marge restauration sur les deux périodes");
+verifier(page.includes("151 DH") && page.includes("150 DH"), "ADR sur les deux périodes");
+verifier(page.includes("35,2 %") && page.includes("19,6 %"), "taux d'occupation sur les deux périodes");
+verifier(page.includes("Exercice 2026-2027"), "libellé de l'exercice");
 verifier(page.includes("creation-reservation"), "branche en attente signalée");
 verifier(page.includes("déjà fusionnée"), "branche fusionnée repérée");
 verifier(page.includes("tresorerie") && page.includes("introuvable"), "dépôt absent : message clair");
@@ -110,16 +128,39 @@ verifier(page.includes("snack_ventes"), "table inconnue signalée");
 verifier(!page.includes("Site internet"), "projets Notion terminés masqués");
 verifier(page.includes("Maintenance d&#39;été") && page.includes("dans 8 j"), "échéance proche");
 verifier(!/<script/i.test(page), "aucun script dans la page");
-if (lire("KasbahCalendar/TASKS.md")) verifier(/Bloquant<\/span>[\s\S]{0,300}Snack : mise en service/.test(page), "migrations du snack en bloquant");
-if (lire("Kasbah-Analytique/CLAUDE.md")) verifier(page.includes("Étape P4"), "étape en cours de l'analytique");
 
 r = await worker.fetch(new Request("https://t.dev/?rafraichir=1", { headers: { Cookie: cookie } }),
   { ...env, GITHUB_TOKEN: "", NOTION_TOKEN: "", SUPABASE_CLE_TABLEAU: "mauvaise" });
 const vide = await r.text();
+verifier(vide.includes("Pas encore de chiffres"), "sans Supabase : la bande de chiffres l'explique");
 verifier(r.status === 200 && vide.includes("Clé GitHub pas encore ajoutée") && vide.includes("refuse la clé"), "sans clés : page partielle avec explications");
 
 r = await worker.fetch(new Request("https://t.dev/"), { ...env, MOT_DE_PASSE: "" });
 verifier(r.status === 503, "sans mot de passe configuré : page fermée");
+
+// Détection des migrations à appliquer, sur un TASKS.md d'exemple : ne
+// dépend pas des fichiers du poste, qui changent au fil du travail.
+const { analyser } = await import("../src/analyse.js");
+const exemple = `# Tâches
+
+## À faire
+
+- [ ] **Snack : mise en service de ce qui est déjà écrit** — *3 étapes*
+  - Appliquer les migrations \`20260920170000_annuler_vente_snack.sql\` dans l'éditeur SQL Supabase.
+  - Vérifier que la fonction a bien été redéployée.
+
+- [ ] **Autre chose, sans SQL**
+
+## Fait
+- [x] Déjà fait — 20/09/2026
+`;
+const vueExemple = analyser({
+  github: { ok: true, donnees: [{ nom: "KasbahCalendar", sous_titre: "", ok: true, principale: "main", commits: [], branches: [], taches: exemple, migrations: [] }] },
+  notion: { ok: false, erreur: "" }, supabase: { ok: false, erreur: "" },
+}, new Date());
+const bloquantes = vueExemple.alertes.filter((a) => a.niveau === "crit");
+verifier(bloquantes.length === 1 && bloquantes[0].titre.startsWith("Snack : mise en service"), "une migration à appliquer devient une alerte bloquante");
+verifier(vueExemple.projets[0].ouverts.length === 2, "les deux tâches ouvertes sont reprises, la tâche faite non");
 
 if (process.argv[2]) fs.writeFileSync(process.argv[2], page);
 console.log(echecs ? `\n${echecs} échec(s)` : "\nTout est bon.");

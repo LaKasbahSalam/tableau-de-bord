@@ -257,6 +257,7 @@ export function analyser({ github, notion, supabase }, maintenant) {
     flux,
     projets,
     notion: notionVue,
+    chiffres: sb ? sb.chiffres : null,
     occupation: sb ? sb.occupation : null,
     etat: { github: github.ok, notion: notion.ok, supabase: supabase.ok },
   };
