@@ -256,6 +256,50 @@ export function analyser({ github, registre, supabase }, maintenant) {
     }
   }
 
+  // --- La santé du tableau de bord lui-même
+  //
+  // Un outil qui vieillit en silence trompe tout le monde : la base Notion
+  // et le message de 21h d'août l'ont montré. Il dit donc lui-même quand
+  // il n'est plus tenu.
+  if (registre.ok) {
+    const dernier = faits.find((f) => f.date);
+    if (!dernier) {
+      alerte("warn", "Le registre est vide", "Aucun fait enregistré : la page ne raconte rien de ce qui se fait.", "Tableau de bord");
+    } else {
+      const age = joursEntre(dernier.date, ici.jour);
+      if (age >= 14) {
+        alerte(age >= 30 ? "crit" : "warn", `Aucun fait enregistré depuis ${age} jours`,
+          `Le dernier remonte au ${dernier.date_fr}. Sans écriture, la page continue d'afficher des chiffres justes, mais ne dit plus ce qui a été fait ni décidé.`, "Tableau de bord");
+      }
+    }
+
+    const revue = (registre.donnees.technique || "").match(/Derni[èe]re r[ée]vision\s*:\s*(\d{2})\/(\d{2})\/(\d{4})/);
+    if (revue) {
+      const age = joursEntre(`${revue[3]}-${revue[2]}-${revue[1]}`, ici.jour);
+      if (age >= 90) {
+        alerte("warn", `La page technique n'a pas été revue depuis ${Math.round(age / 30)} mois`,
+          `Dernière révision le ${revue[1]}/${revue[2]}/${revue[3]}. L'architecture a probablement bougé depuis : \`pilotage/technique.md\`.`, "Tableau de bord");
+      }
+    } else if (registre.donnees.technique) {
+      alerte("info", "La page technique ne porte pas de date de révision",
+        "Ajouter une ligne « Dernière révision : JJ/MM/AAAA » permet de savoir quand elle a menti pour la dernière fois.", "Tableau de bord", true);
+    }
+
+    const cle = (registre.donnees.technique || "").match(/Cl[ée] GitHub[^\n]*expire le\s*(\d{2})\/(\d{2})\/(\d{4})/i);
+    if (cle) {
+      const reste = joursEntre(ici.jour, `${cle[3]}-${cle[2]}-${cle[1]}`);
+      if (reste < 0) {
+        alerte("crit", "La clé GitHub a expiré", `Échue le ${cle[1]}/${cle[2]}/${cle[3]} : la page ne lit plus ni les tâches, ni le registre, ni les projets.`, "Tableau de bord");
+      } else if (reste <= 21) {
+        alerte("warn", `La clé GitHub expire dans ${reste} jours`,
+          `Le ${cle[1]}/${cle[2]}/${cle[3]}. À renouveler avant, sinon la page devient grise du jour au lendemain.`, "Tableau de bord");
+      }
+    } else if (registre.donnees.technique && !/Cl[ée] GitHub[^\n]*sans expiration/i.test(registre.donnees.technique)) {
+      alerte("info", "L'expiration de la clé GitHub n'est notée nulle part",
+        "L'écrire dans `pilotage/technique.md` (« Clé GitHub : expire le JJ/MM/AAAA », ou « sans expiration ») pour ne pas la découvrir le jour où tout devient gris.", "Tableau de bord");
+    }
+  }
+
   // --- Sources mal configurées
   for (const [nom, s] of [["GitHub", github], ["Registre", registre], ["Supabase", supabase]]) {
     if (!s.ok) alerte("info", `${nom} n'est pas lu`, s.erreur, "Configuration", true);

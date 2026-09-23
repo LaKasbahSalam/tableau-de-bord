@@ -287,6 +287,27 @@ verifier(r.status === 403, "l'associé ne peut pas modifier le registre");
 verifier(!vueAssocie.includes("/modifier"), "et n'en voit même pas les liens");
 verifier(page.includes("/modifier"), "l'équipe, elle, a un lien Modifier sur chaque bloc");
 
+// --- Le tableau de bord surveille sa propre fraîcheur
+const vieux = (nb) => ({
+  github: { ok: true, donnees: [] },
+  registre: { ok: true, donnees: {
+    projets: "",
+    technique: "Dernière révision : 01/01/2026.\n\nClé GitHub : expire le 05/01/2026.",
+    mois: [{ nom: "2026-01.md", contenu: `### ${jour(nb).slice(8, 10)}/${jour(nb).slice(5, 7)}/${jour(nb).slice(0, 4)} · Outils · Livraison · X\n\nUn fait.` }],
+  } },
+  supabase: { ok: false, erreur: "" },
+});
+const titres = (v) => v.alertes.map((a) => a.titre).join(" | ");
+
+let vue = analyser(vieux(40), new Date());
+verifier(/Aucun fait enregistré depuis 40 jours/.test(titres(vue)), "un registre abandonné depuis 40 jours est signalé");
+verifier(vue.alertes.some((a) => a.niveau === "crit" && /Aucun fait/.test(a.titre)), "au-delà d'un mois, c'est bloquant");
+verifier(/page technique n'a pas été revue/.test(titres(vue)), "une page technique trop vieille est signalée");
+verifier(/clé GitHub a expiré/.test(titres(vue)), "une clé GitHub échue est signalée");
+
+vue = analyser(vieux(3), new Date());
+verifier(!/Aucun fait enregistré/.test(titres(vue)), "un registre tenu ne déclenche rien");
+
 if (process.argv[2]) fs.writeFileSync(process.argv[2], page);
 if (process.argv[3]) fs.writeFileSync(process.argv[3], vueAssocie);
 console.log(echecs ? `\n${echecs} échec(s)` : "\nTout est bon.");
