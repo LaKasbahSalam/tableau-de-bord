@@ -11,10 +11,14 @@
  * Les réponses sont gardées 3 minutes par instance ; `?rafraichir=1` force
  * une nouvelle lecture.
  */
-import { lireTout, lireFichierRegistre, ecrireFichierRegistre } from "./sources.js";
+import {
+  lireTout, lireFichierRegistre, ecrireFichierRegistre,
+  DOSSIER_DOCUMENTS, MAX_DOCUMENTS_PAR_PROJET, MAX_OCTETS_DOCUMENT,
+  listerDocumentsProjet, lireDocumentBrut, ecrireDocument, supprimerDocument, octetsVersBase64,
+} from "./sources.js";
 import { analyser } from "./analyse.js";
-import { pageTableau, pageEdition, pageConnexion } from "./page.js";
-import { lireProjets, lireFaits, remplacerBloc } from "./registre.js";
+import { pageTableau, pageEdition, pageDocuments, pageConnexion } from "./page.js";
+import { lireProjets, lireFaits, remplacerBloc, slugProjet } from "./registre.js";
 
 const COOKIE = "kasbah_tdb";
 const DUREE_CACHE_MS = 3 * 60 * 1000;
@@ -78,6 +82,17 @@ export default {
       return modifier(requete, env, url);
     }
 
+    // Ajouter ou retirer un document d'un projet : réservé à l'équipe.
+    if (url.pathname === "/documents") {
+      if (associe) return new Response("Réservé à l'équipe", { status: 403 });
+      return documents(requete, env);
+    }
+
+    // Télécharger un document : équipe et associé, comme le reste du registre.
+    if (url.pathname === "/document") {
+      return telechargerDocument(env, url);
+    }
+
     if (url.pathname !== "/") return new Response("Introuvable", { status: 404 });
 
     const donnees = await lues(env, url.searchParams.has("rafraichir"));
@@ -136,6 +151,121 @@ async function modifier(requete, env, url) {
   } catch (e) {
     const secours = { titre, brut: texte };
     return rendre({ fichier, index, bloc: secours, erreur: String(e.message || e), quoi: fichier === "projets.md" ? "projet" : "fait" }, 409);
+  }
+}
+
+/** Retrouve un projet de `projets.md` par son rang, pour connaître son nom (donc son dossier de documents). */
+async function projetDe(env, index) {
+  const { contenu } = await lireFichierRegistre(env, "projets.md");
+  const projet = lireProjets(contenu).find((p) => p.index === Number(index));
+  if (!projet) throw new Error("Ce projet n'existe plus : recharge la page.");
+  return projet;
+}
+
+/** Un nom de fichier sûr : pas de chemin, pas de caractères qui dérangent Git ou une URL. */
+function nomFichierSur(nom) {
+  const propre = String(nom || "fichier").split(/[/\\]/).pop()
+    .normalize("NFC").replace(/[^\w.\- ()À-ÿ]/g, "_").trim();
+  return (propre || "fichier").slice(0, 120);
+}
+
+const TYPES_MIME = {
+  pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif",
+  webp: "image/webp", heic: "image/heic", doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  csv: "text/csv", txt: "text/plain",
+};
+const typeMime = (nom) => TYPES_MIME[(nom.split(".").pop() || "").toLowerCase()] || "application/octet-stream";
+
+/** La page d'un projet : ses documents, plus le formulaire d'ajout tant qu'il en reste la place. */
+async function documents(requete, env) {
+  const url = new URL(requete.url);
+  const rendre = (index, nom, liste, erreur, status = 200) =>
+    html(pageDocuments({ index, nom, documents: liste, erreur }), status);
+
+  if (requete.method === "GET") {
+    const index = url.searchParams.get("i") || "0";
+    try {
+      const projet = await projetDe(env, index);
+      const liste = await listerDocumentsProjet(env, slugProjet(projet.nom));
+      return rendre(index, projet.nom, liste);
+    } catch (e) {
+      return new Response(String(e.message || e), { status: 502 });
+    }
+  }
+
+  if (requete.method !== "POST") return new Response("Méthode refusée", { status: 405 });
+
+  const form = await requete.formData();
+  const index = String(form.get("i") || "0");
+  let projet;
+  try {
+    projet = await projetDe(env, index);
+  } catch (e) {
+    return new Response(String(e.message || e), { status: 404 });
+  }
+  const slug = slugProjet(projet.nom);
+
+  if (form.get("action") === "supprimer") {
+    const chemin = String(form.get("chemin") || "");
+    const sha = String(form.get("sha") || "");
+    if (!chemin.startsWith(`${DOSSIER_DOCUMENTS}/${slug}/`) || chemin.includes("..")) return new Response("Chemin refusé", { status: 400 });
+    try {
+      await supprimerDocument(env, chemin, sha, `Retire un document (${projet.nom}, depuis le tableau de bord)`);
+      cache = null;
+      return new Response(null, { status: 303, headers: { Location: `/documents?i=${index}` } });
+    } catch (e) {
+      const liste = await listerDocumentsProjet(env, slug);
+      return rendre(index, projet.nom, liste, String(e.message || e), 409);
+    }
+  }
+
+  const liste = await listerDocumentsProjet(env, slug);
+  const echec = async (msg, status = 400) => rendre(index, projet.nom, liste, msg, status);
+
+  const fichier = form.get("fichier");
+  if (!fichier || typeof fichier === "string" || !fichier.size) return echec("Choisis un fichier.");
+  if (liste.length >= MAX_DOCUMENTS_PAR_PROJET) {
+    return echec(`Déjà ${MAX_DOCUMENTS_PAR_PROJET} documents sur ce projet : retire-en un avant d'en ajouter un autre.`);
+  }
+  if (fichier.size > MAX_OCTETS_DOCUMENT) {
+    return echec(`Fichier trop lourd (${Math.round(fichier.size / 1024 / 1024)} Mo) : ${MAX_OCTETS_DOCUMENT / 1024 / 1024} Mo au maximum.`);
+  }
+
+  const nom = nomFichierSur(fichier.name);
+  const chemin = `${DOSSIER_DOCUMENTS}/${slug}/${nom}`;
+  const existant = liste.find((d) => d.nom === nom);
+  try {
+    const octets = new Uint8Array(await fichier.arrayBuffer());
+    await ecrireDocument(env, chemin, octetsVersBase64(octets), existant ? existant.sha : null,
+      `${existant ? "Remplace" : "Ajoute"} un document (${projet.nom}, depuis le tableau de bord)`);
+    cache = null;
+    return new Response(null, { status: 303, headers: { Location: `/documents?i=${index}` } });
+  } catch (e) {
+    return echec(String(e.message || e), 409);
+  }
+}
+
+/** Le téléchargement d'un document, en proxy authentifié (le dépôt n'est pas public). */
+async function telechargerDocument(env, url) {
+  const chemin = url.searchParams.get("p") || "";
+  if (!chemin.startsWith(`${DOSSIER_DOCUMENTS}/`) || chemin.includes("..")) return new Response("Chemin refusé", { status: 400 });
+  try {
+    const octets = await lireDocumentBrut(env, chemin);
+    if (!octets) return new Response("Introuvable", { status: 404 });
+    const nom = chemin.split("/").pop();
+    return new Response(octets, {
+      status: 200,
+      headers: {
+        "Content-Type": typeMime(nom),
+        "Content-Disposition": `attachment; filename="${nom.replace(/"/g, "")}"`,
+        "Cache-Control": "private, max-age=300",
+        "X-Robots-Tag": "noindex",
+      },
+    });
+  } catch (e) {
+    return new Response(String(e.message || e), { status: 502 });
   }
 }
 

@@ -14,6 +14,16 @@
 export const DOMAINES = ["Revenus", "Coûts", "Clients", "Équipe", "Outils", "Conformité"];
 export const NATURES = ["Décision", "Livraison", "Incident", "Dépense", "Risque"];
 
+/** Un nom de projet → un dossier stable pour ses documents (`pilotage/documents/<slug>/`). */
+export function slugProjet(nom) {
+  return String(nom || "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || "projet";
+}
+
 const isoDepuisFr = (jjmmaaaa) => {
   // Accepte « 22/09/2026 » et « 18-19/09/2026 » (on garde le dernier jour).
   const m = String(jjmmaaaa).match(/^(\d{2})(?:-(\d{2}))?\/(\d{2})\/(\d{4})$/);

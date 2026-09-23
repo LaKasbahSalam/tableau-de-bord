@@ -4,7 +4,7 @@
  * projet, projets Notion ouverts, occupation.
  */
 
-import { lireProjets, lireFaits, parDomaine } from "./registre.js";
+import { lireProjets, lireFaits, parDomaine, slugProjet } from "./registre.js";
 
 const FUSEAU = "Africa/Casablanca";
 
@@ -222,6 +222,7 @@ export function analyser({ github, registre, supabase }, maintenant) {
   const ORDRE = ["En cours", "À faire", "En attente", "Plus tard", "Terminé", ""];
   let vueProjets = { ok: registre.ok, erreur: registre.erreur, lignes: [], compte: {}, total: 0 };
   let faits = [];
+  const documentsParProjet = registre.ok ? (registre.donnees.documents || {}) : {};
   if (registre.ok) {
     const tous = lireProjets(registre.donnees.projets);
     faits = lireFaits(registre.donnees.mois);
@@ -246,7 +247,7 @@ export function analyser({ github, registre, supabase }, maintenant) {
             alerte("warn", `${p.nom} : échéance le ${jour[1]}/${jour[2]}`, `Projet au statut « ${p.statut || "sans statut"} », dans ${n} jour(s).`, "Projets");
           }
         }
-        return { ...p, niveau, echeanceTexte };
+        return { ...p, niveau, echeanceTexte, documents: documentsParProjet[slugProjet(p.nom)] || [] };
       });
     // Un incident non suivi d'une livraison sur le même projet reste ouvert
     const recents = faits.filter((f) => joursEntre(f.date, ici.jour) <= 30);

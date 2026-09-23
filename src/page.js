@@ -130,6 +130,15 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 .liens{display:flex;gap:10px;flex-wrap:wrap}
 .editer{display:inline-block;margin-top:8px;font-family:var(--mono);font-size:11.5px;color:var(--ink-3);text-decoration:none;border-bottom:1px dotted var(--line)}
 .editer:hover{color:var(--accent);border-color:var(--accent)}
+.docs{list-style:none;margin:0 0 2px;padding:0;display:grid;gap:3px;font-size:13px;max-width:220px}
+.docs a{overflow-wrap:anywhere}
+.docs-gerer{list-style:none;margin:0 0 18px;padding:0;display:grid;gap:8px}
+.docs-gerer li{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px;background:var(--sunk);border-radius:8px}
+.docs-gerer li a{flex:1;min-width:0;overflow-wrap:anywhere}
+.docs-gerer li span{font-size:12px;color:var(--ink-3);white-space:nowrap}
+.docs-gerer form{margin:0}
+.docs-gerer button{font:inherit;font-size:12.5px;font-weight:600;padding:6px 10px;border:0;border-radius:6px;cursor:pointer;background:var(--crit-soft);color:var(--crit)}
+.edition input[type=file]{font:inherit;font-size:13.5px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
 .edition{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px 22px;display:grid;gap:14px}
 .edition textarea{font-family:var(--mono);font-size:13.5px;line-height:1.55;width:100%;min-height:260px;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);resize:vertical}
 .edition .boutons{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -296,12 +305,15 @@ function projetsHtml(p, peutEditer = false) {
   const ordre = ["En cours", "À faire", "En attente", "Plus tard", "Terminé", "Sans statut"];
   const compte = ordre.filter((k) => p.compte[k]).map((k) => `<span><b>${p.compte[k]}</b> ${esc(k.toLowerCase())}</span>`).join("");
   return `<div class="compte">${compte}</div><div class="tbl-scroll"><table>
-    <thead><tr><th>Projet</th><th>Statut</th><th>Domaine</th><th>Responsable</th><th>Échéance</th>${peutEditer ? "<th></th>" : ""}</tr></thead>
+    <thead><tr><th>Projet</th><th>Statut</th><th>Domaine</th><th>Responsable</th><th>Échéance</th><th>Documents</th>${peutEditer ? "<th></th>" : ""}</tr></thead>
     <tbody>${p.lignes.map((x) => `<tr>
       <td><b>${esc(x.nom)}</b>${x.texte ? `<br><small>${esc(x.texte.slice(0, 140))}${x.texte.length > 140 ? "…" : ""}</small>` : ""}</td>
       <td><span class="pill p-${x.niveau}">${esc(x.statut || "Sans statut")}</span></td>
       <td>${esc(x.domaine || "—")}</td><td>${esc(x.responsable || "—")}</td>
       <td class="num">${esc(x.echeanceTexte)}</td>
+      <td>${(x.documents || []).length ? `<ul class="docs">${x.documents.map((d) =>
+        `<li><a href="/document?p=${encodeURIComponent(d.chemin)}">${esc(d.nom)}</a></li>`).join("")}</ul>` : ""}
+        ${peutEditer ? `<a class="editer" href="/documents?i=${x.index}">${(x.documents || []).length ? `Gérer (${x.documents.length}/10)` : "+ Ajouter"}</a>` : (!(x.documents || []).length ? "—" : "")}</td>
       ${peutEditer ? `<td class="num"><a class="editer" href="/modifier?f=projets.md&i=${x.index}">Modifier</a></td>` : ""}
       </tr>`).join("")}</tbody></table></div>`;
 }
@@ -443,5 +455,47 @@ export function pageEdition({ fichier, index, bloc, erreur, quoi }) {
     <a class="btn" href="/">Annuler</a>
   </div>
 </form>
+</div></body></html>`;
+}
+
+/**
+ * Les documents d'un projet : jusqu'à 10, chacun ajouté ou retiré en commit
+ * dans `pilotage/documents/<projet>/` du dépôt Kasbah-Analytique.
+ */
+export function pageDocuments({ index, nom, documents, erreur }) {
+  const plein = documents.length >= 10;
+  return `${tete("Documents — tableau de bord Kasbah")}<div class="wrap">
+<header class="top">
+  <div>
+    <div class="eyebrow">La Kasbah Salam · Fès</div>
+    <h1>Documents — ${esc(nom)}</h1>
+    <p>Jusqu'à 10 documents par projet, gardés dans <span class="mono">pilotage/documents/</span> du dépôt Kasbah-Analytique. Chaque ajout ou retrait devient un commit, donc réversible.</p>
+  </div>
+  <div class="stamp"><a class="btn" href="/#projets">← Retour au tableau de bord</a></div>
+</header>
+
+<div class="edition">
+  ${erreur ? `<p class="err">${esc(erreur)}</p>` : ""}
+
+  ${documents.length ? `<ul class="docs-gerer">${documents.map((d) => `<li>
+    <a href="/document?p=${encodeURIComponent(d.chemin)}">${esc(d.nom)}</a>
+    <span>${Math.max(1, Math.round(d.taille / 1024)).toLocaleString("fr-FR")} Ko</span>
+    <form method="post" action="/documents" onsubmit="return confirm('Retirer ${esc(d.nom).replace(/'/g, "\\'")} ?')">
+      <input type="hidden" name="i" value="${esc(index)}">
+      <input type="hidden" name="action" value="supprimer">
+      <input type="hidden" name="chemin" value="${esc(d.chemin)}">
+      <input type="hidden" name="sha" value="${esc(d.sha)}">
+      <button type="submit">Retirer</button>
+    </form>
+  </li>`).join("")}</ul>` : `<p class="aide">Aucun document pour l'instant.</p>`}
+
+  ${plein ? `<p class="aide">10 documents, le maximum par projet : retire-en un pour en ajouter un autre.</p>` : `
+  <form method="post" action="/documents" enctype="multipart/form-data">
+    <input type="hidden" name="i" value="${esc(index)}">
+    <label class="label" for="fichier">Ajouter un document (15 Mo maximum)</label>
+    <input id="fichier" name="fichier" type="file" required>
+    <div class="boutons"><button class="garder" type="submit">Envoyer</button></div>
+  </form>`}
+</div>
 </div></body></html>`;
 }

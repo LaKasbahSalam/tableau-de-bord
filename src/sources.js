@@ -111,9 +111,10 @@ async function lireRegistre(env) {
     .filter((f) => f.type === "file" && /^\d{4}-\d{2}\.md$/.test(f.name))
     .map((f) => f.name).sort().reverse().slice(0, 4); // 4 derniers mois
 
-  const [projets, technique, ...contenus] = await Promise.all([
+  const [projets, technique, documents, ...contenus] = await Promise.all([
     gh(`${base}/projets.md`, true),
     gh(`${base}/technique.md`, true),
+    listerTousDocuments(env),
     ...mois.map((n) => gh(`${base}/${n}`, true)),
   ]);
   return {
@@ -121,6 +122,7 @@ async function lireRegistre(env) {
     donnees: {
       projets: projets || "",
       technique: technique || "",
+      documents,
       mois: mois.map((nom, i) => ({ nom, contenu: contenus[i] || "" })).filter((f) => f.contenu),
     },
   };
@@ -197,4 +199,100 @@ export async function ecrireFichierRegistre(env, nom, contenu, sha, message) {
     throw new Error("GitHub refuse d'écrire : la clé doit avoir la permission « Contents : Read and write » sur le dépôt Kasbah-Analytique.");
   }
   if (!r.ok) throw new Error(`GitHub ${r.status} à l'écriture de ${nom}`);
+}
+
+// -------------------------------------------- Documents attachés à un projet
+
+/**
+ * Un document par ligne, jusqu'à 10 : `pilotage/documents/<slug-du-projet>/<fichier>`
+ * du dépôt Kasbah-Analytique. Même clé GitHub, même logique de commit que le
+ * reste du registre — un ajout ou un retrait est réversible dans l'historique.
+ */
+export const DOSSIER_DOCUMENTS = "pilotage/documents";
+export const MAX_DOCUMENTS_PAR_PROJET = 10;
+export const MAX_OCTETS_DOCUMENT = 15 * 1024 * 1024; // 15 Mo — au-delà, l'API Contents de GitHub devient peu fiable.
+
+/** Octets → base64, par blocs pour ne pas bloquer le Worker sur un gros fichier. */
+export function octetsVersBase64(octets) {
+  let binaire = "";
+  const PAS = 0x8000;
+  for (let i = 0; i < octets.length; i += PAS) {
+    binaire += String.fromCharCode.apply(null, octets.subarray(i, i + PAS));
+  }
+  return btoa(binaire);
+}
+
+/** Les documents de tous les projets, un appel par dossier trouvé sous `pilotage/documents/`. */
+async function listerTousDocuments(env) {
+  const org = env.GITHUB_ORG || "LaKasbahSalam";
+  const gh = async (chemin) => {
+    const r = await fetch(`https://api.github.com${chemin}`, { headers: entetesGithub(env) });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error(`GitHub ${r.status} sur ${chemin}`);
+    return r.json();
+  };
+  const racine = await gh(`/repos/${org}/${DEPOT_REGISTRE}/contents/${DOSSIER_DOCUMENTS}`);
+  if (!Array.isArray(racine)) return {};
+  const dossiers = racine.filter((f) => f.type === "dir");
+  const listes = await Promise.all(dossiers.map((d) => gh(`/repos/${org}/${DEPOT_REGISTRE}/contents/${DOSSIER_DOCUMENTS}/${d.name}`)));
+  const documents = {};
+  dossiers.forEach((d, i) => {
+    documents[d.name] = (Array.isArray(listes[i]) ? listes[i] : [])
+      .filter((f) => f.type === "file")
+      .map((f) => ({ nom: f.name, chemin: f.path, taille: f.size, sha: f.sha }))
+      .sort((a, b) => a.nom.localeCompare(b.nom));
+  });
+  return documents;
+}
+
+/** Les documents d'un seul projet — utilisé par la page d'ajout/retrait, sans relire tout le reste. */
+export async function listerDocumentsProjet(env, slug) {
+  const org = env.GITHUB_ORG || "LaKasbahSalam";
+  const r = await fetch(`https://api.github.com/repos/${org}/${DEPOT_REGISTRE}/contents/${DOSSIER_DOCUMENTS}/${slug}`,
+    { headers: entetesGithub(env) });
+  if (r.status === 404) return [];
+  if (!r.ok) throw new Error(`GitHub ${r.status} à la lecture des documents de ${slug}`);
+  const liste = await r.json();
+  return (Array.isArray(liste) ? liste : [])
+    .filter((f) => f.type === "file")
+    .map((f) => ({ nom: f.name, chemin: f.path, taille: f.size, sha: f.sha }))
+    .sort((a, b) => a.nom.localeCompare(b.nom));
+}
+
+/** Le contenu brut d'un document (octets), pour le proposer au téléchargement. */
+export async function lireDocumentBrut(env, chemin) {
+  const org = env.GITHUB_ORG || "LaKasbahSalam";
+  const r = await fetch(`https://api.github.com/repos/${org}/${DEPOT_REGISTRE}/contents/${chemin}`,
+    { headers: entetesGithub(env, true) });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`GitHub ${r.status} à la lecture de ${chemin}`);
+  return r.arrayBuffer();
+}
+
+/** Écrit (ou remplace, si `sha` est fourni) un document. `contenuBase64` : le fichier encodé en base64. */
+export async function ecrireDocument(env, chemin, contenuBase64, sha, message) {
+  const org = env.GITHUB_ORG || "LaKasbahSalam";
+  const r = await fetch(`https://api.github.com/repos/${org}/${DEPOT_REGISTRE}/contents/${chemin}`, {
+    method: "PUT",
+    headers: entetesGithub(env),
+    body: JSON.stringify({ message, content: contenuBase64, ...(sha ? { sha } : {}) }),
+  });
+  if (r.status === 409) throw new Error("Quelqu'un a modifié ce dossier entre-temps. Recharge la page et recommence.");
+  if (r.status === 403 || r.status === 404) {
+    throw new Error("GitHub refuse d'écrire : la clé doit avoir la permission « Contents : Read and write » sur le dépôt Kasbah-Analytique.");
+  }
+  if (r.status === 422) throw new Error("GitHub refuse ce fichier (nom ou taille) : renomme-le et réessaie.");
+  if (!r.ok) throw new Error(`GitHub ${r.status} à l'écriture de ${chemin}`);
+}
+
+/** Supprime un document. */
+export async function supprimerDocument(env, chemin, sha, message) {
+  const org = env.GITHUB_ORG || "LaKasbahSalam";
+  const r = await fetch(`https://api.github.com/repos/${org}/${DEPOT_REGISTRE}/contents/${chemin}`, {
+    method: "DELETE",
+    headers: entetesGithub(env),
+    body: JSON.stringify({ message, sha }),
+  });
+  if (r.status === 409) throw new Error("Quelqu'un a modifié ce fichier entre-temps. Recharge la page et recommence.");
+  if (!r.ok) throw new Error(`GitHub ${r.status} à la suppression de ${chemin}`);
 }

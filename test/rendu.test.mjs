@@ -111,10 +111,46 @@ const supabase = {
 // Ce que le faux dépôt a écrit, pour vérifier le contenu du commit
 export const ecrits = [];
 
+// Un petit « GitHub » en mémoire pour pilotage/documents/ : assez pour
+// tester l'aller-retour complet (ajout, liste, téléchargement, retrait).
+const docsStore = {};
+let prochainShaDoc = 1;
+
 globalThis.fetch = async (url, opts = {}) => {
   const u = new URL(url);
   const json = (o, s = 200) => new Response(JSON.stringify(o), { status: s });
   if (u.host === "api.github.com") {
+    const enChemin = u.pathname.replace(/^\/repos\/[^/]+\/[^/]+\/contents\//, "");
+    if (/^pilotage\/documents(\/|$)/.test(enChemin)) {
+      if (opts.method === "PUT") {
+        const corps = JSON.parse(opts.body);
+        if (corps.sha && (!docsStore[enChemin] || docsStore[enChemin].sha !== corps.sha)) return new Response("", { status: 409 });
+        const sha = `sha-doc-${prochainShaDoc++}`;
+        docsStore[enChemin] = { contenuBase64: corps.content, sha, taille: atob(corps.content).length };
+        return json({ content: { sha } });
+      }
+      if (opts.method === "DELETE") {
+        const corps = JSON.parse(opts.body);
+        if (!docsStore[enChemin] || docsStore[enChemin].sha !== corps.sha) return new Response("", { status: 409 });
+        delete docsStore[enChemin];
+        return json({});
+      }
+      if (enChemin === "pilotage/documents") {
+        const slugs = [...new Set(Object.keys(docsStore).map((c) => c.split("/")[2]).filter(Boolean))];
+        return slugs.length ? json(slugs.map((s) => ({ type: "dir", name: s }))) : new Response("", { status: 404 });
+      }
+      const dossier = enChemin.match(/^pilotage\/documents\/([^/]+)$/);
+      if (dossier) {
+        const fichiers = Object.keys(docsStore).filter((c) => c.startsWith(`${enChemin}/`));
+        return fichiers.length
+          ? json(fichiers.map((c) => ({ type: "file", name: c.split("/").pop(), path: c, size: docsStore[c].taille, sha: docsStore[c].sha })))
+          : new Response("", { status: 404 });
+      }
+      const doc = docsStore[enChemin];
+      if (!doc) return new Response("", { status: 404 });
+      const octets = Uint8Array.from(atob(doc.contenuBase64), (c) => c.charCodeAt(0));
+      return new Response(octets, { status: 200 });
+    }
     // Écriture d'un fichier du registre
     if (opts.method === "PUT") {
       const corps = JSON.parse(opts.body);
@@ -307,6 +343,75 @@ verifier(/clé GitHub a expiré/.test(titres(vue)), "une clé GitHub échue est 
 
 vue = analyser(vieux(3), new Date());
 verifier(!/Aucun fait enregistré/.test(titres(vue)), "un registre tenu ne déclenche rien");
+
+// --- Documents par projet : jusqu'à 10, ajoutés et retirés en commit
+// Projet 0 dans le fixture ci-dessus : "Tableau de bord Kasbah".
+const cheminDoc = "pilotage/documents/tableau-de-bord-kasbah/notes.txt";
+
+r = await worker.fetch(new Request("https://t.dev/documents?i=0", { headers: { Cookie: cookie } }), env);
+const pageDocsVide = await r.text();
+verifier(r.status === 200 && pageDocsVide.includes("Tableau de bord Kasbah"), "la page documents s'ouvre sur le bon projet");
+verifier(pageDocsVide.includes("Aucun document pour l'instant"), "aucun document au départ");
+
+let fd = new FormData();
+fd.set("i", "0");
+fd.set("fichier", new Blob(["contenu du fichier"], { type: "text/plain" }), "notes.txt");
+r = await worker.fetch(new Request("https://t.dev/documents", { method: "POST", body: fd, headers: { Cookie: cookie } }), env);
+verifier(r.status === 303, "l'ajout d'un document renvoie à la page du projet");
+
+r = await worker.fetch(new Request("https://t.dev/documents?i=0", { headers: { Cookie: cookie } }), env);
+const pageDocsUn = await r.text();
+verifier(pageDocsUn.includes("notes.txt"), "le document ajouté apparaît dans sa page");
+
+r = await worker.fetch(new Request("https://t.dev/?rafraichir=1", { headers: { Cookie: cookie } }), env);
+const pageAvecDoc = await r.text();
+verifier(pageAvecDoc.includes(`/document?p=${encodeURIComponent(cheminDoc)}`) && pageAvecDoc.includes("Gérer (1/10)"),
+  "le tableau de bord montre le document et le compte sur la ligne du projet");
+
+r = await worker.fetch(new Request(`https://t.dev/document?p=${encodeURIComponent(cheminDoc)}`, { headers: { Cookie: cookie } }), env);
+verifier(r.status === 200 && (await r.text()) === "contenu du fichier", "le téléchargement rend le contenu exact");
+
+r = await worker.fetch(new Request(`https://t.dev/document?p=${encodeURIComponent(cheminDoc)}`, { headers: { Cookie: cookieAssocie } }), env);
+verifier(r.status === 200, "l'associé peut aussi télécharger un document");
+
+r = await worker.fetch(new Request("https://t.dev/documents?i=0", { headers: { Cookie: cookieAssocie } }), env);
+verifier(r.status === 403, "l'associé ne peut pas gérer les documents");
+
+let fdAssocie = new FormData();
+fdAssocie.set("i", "0");
+fdAssocie.set("fichier", new Blob(["intrus"], { type: "text/plain" }), "intrus.txt");
+r = await worker.fetch(new Request("https://t.dev/documents", { method: "POST", body: fdAssocie, headers: { Cookie: cookieAssocie } }), env);
+verifier(r.status === 403, "l'associé ne peut pas ajouter de document");
+
+r = await worker.fetch(new Request(`https://t.dev/document?p=${encodeURIComponent("pilotage/documents/../../technique.md")}`, { headers: { Cookie: cookie } }), env);
+verifier(r.status === 400, "un chemin qui sort du dossier documents est refusé");
+
+// Neuf de plus : la limite de 10 par projet doit se déclencher au onzième
+for (let i = 2; i <= 10; i++) {
+  const f = new FormData();
+  f.set("i", "0");
+  f.set("fichier", new Blob(["x"], { type: "text/plain" }), `doc${i}.txt`);
+  r = await worker.fetch(new Request("https://t.dev/documents", { method: "POST", body: f, headers: { Cookie: cookie } }), env);
+}
+verifier(r.status === 303, "le dixième document passe encore");
+let fdTropPlein = new FormData();
+fdTropPlein.set("i", "0");
+fdTropPlein.set("fichier", new Blob(["x"], { type: "text/plain" }), "doc11.txt");
+r = await worker.fetch(new Request("https://t.dev/documents", { method: "POST", body: fdTropPlein, headers: { Cookie: cookie } }), env);
+const pagePleine = await r.text();
+verifier(r.status === 400 && pagePleine.includes("Déjà 10 documents"), "le onzième document est refusé, la limite de 10 expliquée");
+
+// Retirer le tout premier document
+r = await worker.fetch(new Request("https://t.dev/documents?i=0", { headers: { Cookie: cookie } }), env);
+const blocNotes = (await r.text()).split("<li>").find((seg) => seg.includes("notes.txt")) || "";
+const shaNotes = blocNotes.match(/name="sha" value="([^"]+)"/)?.[1];
+const retraitDoc = new FormData();
+retraitDoc.set("i", "0"); retraitDoc.set("action", "supprimer");
+retraitDoc.set("chemin", cheminDoc); retraitDoc.set("sha", shaNotes || "");
+r = await worker.fetch(new Request("https://t.dev/documents", { method: "POST", body: retraitDoc, headers: { Cookie: cookie } }), env);
+verifier(r.status === 303, "retirer un document renvoie à la page du projet");
+r = await worker.fetch(new Request("https://t.dev/documents?i=0", { headers: { Cookie: cookie } }), env);
+verifier(!(await r.text()).includes(">notes.txt<"), "le document retiré n'apparaît plus");
 
 if (process.argv[2]) fs.writeFileSync(process.argv[2], page);
 if (process.argv[3]) fs.writeFileSync(process.argv[3], vueAssocie);
