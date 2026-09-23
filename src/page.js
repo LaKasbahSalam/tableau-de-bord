@@ -10,9 +10,10 @@ const PASTILLE = { crit: "Bloquant", warn: "À voir", info: "Info", ok: "OK", id
 
 const CSS = `
 :root{
-  --bg:#F3F5F3; --surface:#FFFFFF; --sunk:#E8ECE9; --ink:#17211E; --ink-2:#4B5A55; --ink-3:#6E7C77;
-  --line:#D6DDD9; --accent:#0E6655; --accent-soft:#D5EAE4;
-  --crit:#B42318; --crit-soft:#FBE4E1; --warn:#955E0F; --warn-soft:#F8EBD3; --ok:#2B7A4B; --ok-soft:#DDF0E3; --idle:#66726E; --idle-soft:#E6EAE8;
+  /* Charte Kasbah — reprise du thème Looker (looker-theme-source-v2.png) */
+  --bg:#F6F0E6; --surface:#FFFCF7; --sunk:#EFE7D9; --ink:#2A221C; --ink-2:#5C4E41; --ink-3:#8A7A68;
+  --line:#DFD3BF; --accent:#2E5FB3; --accent-soft:#DEE7F7;
+  --crit:#C1430E; --crit-soft:#F8E0D3; --warn:#8A6410; --warn-soft:#FBEED5; --ok:#1F8C5D; --ok-soft:#DBEFE4; --idle:#8A7A68; --idle-soft:#EBE3D5;
   --display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
   --body:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --mono:"IBM Plex Mono", ui-monospace, Consolas, monospace;
@@ -20,9 +21,9 @@ const CSS = `
 }
 @media (prefers-color-scheme: dark){
   :root{
-    --bg:#0F1614; --surface:#17211E; --sunk:#1E2A26; --ink:#E6EEEB; --ink-2:#A9B7B2; --ink-3:#83928D;
-    --line:#2A3833; --accent:#5CC4AD; --accent-soft:#16352E;
-    --crit:#F07A6E; --crit-soft:#3A1D1A; --warn:#E3B062; --warn-soft:#352914; --ok:#6CCB8F; --ok-soft:#173222; --idle:#8E9C97; --idle-soft:#222D29;
+    --bg:#211B16; --surface:#2A221C; --sunk:#342A22; --ink:#F5EEE2; --ink-2:#CBBDA3; --ink-3:#9B8B78;
+    --line:#3E342A; --accent:#6E96D4; --accent-soft:#1E2B40;
+    --crit:#E4703F; --crit-soft:#3A2018; --warn:#EDA92B; --warn-soft:#342612; --ok:#4FB183; --ok-soft:#16301F; --idle:#9B8B78; --idle-soft:#2E2620;
   }
 }
 *{box-sizing:border-box}
@@ -127,6 +128,16 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 .doc table{min-width:520px}
 .doc .tbl-scroll{margin:0 0 16px;border-radius:8px}
 .liens{display:flex;gap:10px;flex-wrap:wrap}
+.editer{display:inline-block;margin-top:8px;font-family:var(--mono);font-size:11.5px;color:var(--ink-3);text-decoration:none;border-bottom:1px dotted var(--line)}
+.editer:hover{color:var(--accent);border-color:var(--accent)}
+.edition{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px 22px;display:grid;gap:14px}
+.edition textarea{font-family:var(--mono);font-size:13.5px;line-height:1.55;width:100%;min-height:260px;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);resize:vertical}
+.edition .boutons{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.edition button{font:inherit;font-size:14px;font-weight:600;padding:9px 16px;border:0;border-radius:8px;cursor:pointer}
+.edition .garder{background:var(--accent);color:var(--surface)}
+.edition .retirer{background:var(--crit-soft);color:var(--crit)}
+.edition .aide{font-size:13px;color:var(--ink-3);margin:0}
+.edition .err{color:var(--crit);font-size:14px;margin:0}
 .sommaire{display:flex;gap:6px;flex-wrap:wrap;margin:-18px 0 -12px}
 .sommaire a{font-family:var(--mono);font-size:12px;text-decoration:none;color:var(--ink-2);border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 11px}
 .sommaire a:hover{border-color:var(--accent);color:var(--accent)}
@@ -141,7 +152,7 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 .chart svg{width:100%;height:auto;display:block}
 .chart text{font-family:var(--mono);font-size:11px;fill:var(--ink-3)}
 .chart .val{fill:var(--ink);font-size:11.5px}
-.chart .bar{fill:var(--accent)} .chart .bar.encours{opacity:.4}
+.chart .bar{fill:var(--accent)} .chart .bar.encours{fill:#EDA92B;opacity:1}
 .chart .grid-l{stroke:var(--line);stroke-width:1}
 .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink-3);margin-top:8px}
 .tbl-scroll{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px}
@@ -280,21 +291,23 @@ function occupationHtml(occ) {
   <div class="legend"><span>en %, vue <span class="mono">v_occupation</span></span><span>barre claire = mois en cours</span></div></div></section>`;
 }
 
-function projetsHtml(p) {
+function projetsHtml(p, peutEditer = false) {
   if (!p.ok) return `<div class="panne">${md(p.erreur || "Le registre n'est pas lu.")}</div>`;
   const ordre = ["En cours", "À faire", "En attente", "Plus tard", "Terminé", "Sans statut"];
   const compte = ordre.filter((k) => p.compte[k]).map((k) => `<span><b>${p.compte[k]}</b> ${esc(k.toLowerCase())}</span>`).join("");
   return `<div class="compte">${compte}</div><div class="tbl-scroll"><table>
-    <thead><tr><th>Projet</th><th>Statut</th><th>Domaine</th><th>Responsable</th><th>Échéance</th></tr></thead>
+    <thead><tr><th>Projet</th><th>Statut</th><th>Domaine</th><th>Responsable</th><th>Échéance</th>${peutEditer ? "<th></th>" : ""}</tr></thead>
     <tbody>${p.lignes.map((x) => `<tr>
       <td><b>${esc(x.nom)}</b>${x.texte ? `<br><small>${esc(x.texte.slice(0, 140))}${x.texte.length > 140 ? "…" : ""}</small>` : ""}</td>
       <td><span class="pill p-${x.niveau}">${esc(x.statut || "Sans statut")}</span></td>
       <td>${esc(x.domaine || "—")}</td><td>${esc(x.responsable || "—")}</td>
-      <td class="num">${esc(x.echeanceTexte)}</td></tr>`).join("")}</tbody></table></div>`;
+      <td class="num">${esc(x.echeanceTexte)}</td>
+      ${peutEditer ? `<td class="num"><a class="editer" href="/modifier?f=projets.md&i=${x.index}">Modifier</a></td>` : ""}
+      </tr>`).join("")}</tbody></table></div>`;
 }
 
 /** Le registre : ce qui a été fait, classé. */
-function faitsHtml(faits, limite = 40) {
+function faitsHtml(faits, limite = 40, peutEditer = false) {
   if (!faits || !faits.length) return `<div class="panne">Rien d'enregistré pour l'instant.</div>`;
   return `<ol class="faits">${faits.slice(0, limite).map((f) => `<li>
     <div class="quand"><b>${esc(f.date_fr)}</b><span>${esc(f.domaine)}</span></div>
@@ -302,6 +315,7 @@ function faitsHtml(faits, limite = 40) {
       <div class="etiq"><span class="pill p-${f.nature === "Incident" || f.nature === "Risque" ? "warn" : f.nature === "Décision" ? "info" : "ok"}">${esc(f.nature)}</span>${f.projet ? `<span class="proj">${esc(f.projet)}</span>` : ""}</div>
       ${f.effet ? `<p class="effet">${md(f.effet)}</p>` : ""}
       <p>${md(f.texte)}</p>
+      ${peutEditer ? `<a class="editer" href="/modifier?f=${encodeURIComponent(f.fichier)}&i=${f.index}">Modifier</a>` : ""}
     </div></li>`).join("")}</ol>`;
 }
 
@@ -362,7 +376,7 @@ export function pageTableau(v, lu, associe = false) {
 <section id="faits" aria-labelledby="h-faits">
   <div class="section-head"><h2 id="h-faits">Ce qui s'est fait</h2><p>Registre tenu \u00e0 chaque s\u00e9ance \u00b7 l'effet est en t\u00eate de chaque fait</p></div>
   ${domaines.length ? `<div class="dom">${domaines.map(([d, n]) => `<span><b>${n}</b> ${esc(d.toLowerCase())}</span>`).join("")}<span>sur 30 jours</span></div>` : ""}
-  ${faitsHtml(v.faits, 12)}
+  ${faitsHtml(v.faits, 12, !associe)}
 </section>
 
 <section id="nuit" aria-labelledby="h-flow">
@@ -372,7 +386,7 @@ export function pageTableau(v, lu, associe = false) {
 
 <section id="projets" aria-labelledby="h-proj-ouverts">
   <div class="section-head"><h2 id="h-proj-ouverts">Les projets</h2><p>Hors termin\u00e9s \u00b7 <span class="mono">pilotage/projets.md</span></p></div>
-  ${projetsHtml(v.projets_ouverts)}
+  ${projetsHtml(v.projets_ouverts, !associe)}
 </section>
 
 ${associe ? "" : `<section id="depots" aria-labelledby="h-proj">
@@ -394,5 +408,40 @@ ${occupationHtml(v.occupation)}
 </section>
 
 <footer><p>Chiffres : compte de r\u00e9sultat du classeur de tr\u00e9sorerie et r\u00e9servations Beds24, recopi\u00e9s chaque nuit. Registre et projets : tenus \u00e0 chaque s\u00e9ance de travail. Les lectures sont gard\u00e9es 3 minutes.</p><a class="btn" href="/deconnexion">Se d\u00e9connecter</a></footer>
+</div></body></html>`;
+}
+
+
+/**
+ * Le formulaire d'un bloc : son texte brut, tel qu'il est dans le fichier.
+ * Enregistrer écrit un commit dans le dépôt ; supprimer retire le bloc.
+ */
+export function pageEdition({ fichier, index, bloc, erreur, quoi }) {
+  return `${tete("Modifier — tableau de bord Kasbah")}<div class="wrap">
+<header class="top">
+  <div>
+    <div class="eyebrow">La Kasbah Salam · Fès</div>
+    <h1>Modifier ${quoi === "projet" ? "un projet" : "un fait"}</h1>
+    <p>Le texte ci-dessous est celui du fichier <span class="mono">pilotage/${esc(fichier)}</span>. Ce qui est enregistré ici devient un commit dans le dépôt : rien ne se perd, tout se retrouve.</p>
+  </div>
+  <div class="stamp"><a class="btn" href="/">← Retour au tableau de bord</a></div>
+</header>
+
+<form class="edition" method="post" action="/modifier">
+  ${erreur ? `<p class="err">${esc(erreur)}</p>` : ""}
+  <input type="hidden" name="f" value="${esc(fichier)}">
+  <input type="hidden" name="i" value="${esc(index)}">
+  <input type="hidden" name="titre" value="${esc(bloc.titre)}">
+  <label class="label" for="texte">Le bloc, en Markdown</label>
+  <textarea id="texte" name="texte" spellcheck="true">${esc(bloc.brut)}</textarea>
+  <p class="aide">${quoi === "projet"
+    ? "Première ligne : <code>## Nom · Statut · Domaine · Responsable</code>. Statuts : En cours, À faire, En attente, Plus tard, Terminé."
+    : "Première ligne : <code>### JJ/MM/AAAA · Domaine · Nature · Projet</code>. Domaines : Revenus, Coûts, Clients, Équipe, Outils, Conformité. Natures : Décision, Livraison, Incident, Dépense, Risque."}</p>
+  <div class="boutons">
+    <button class="garder" type="submit" name="action" value="enregistrer">Enregistrer</button>
+    <button class="retirer" type="submit" name="action" value="supprimer" onclick="return confirm('Supprimer ce bloc ?')">Supprimer</button>
+    <a class="btn" href="/">Annuler</a>
+  </div>
+</form>
 </div></body></html>`;
 }

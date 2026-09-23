@@ -108,10 +108,29 @@ const supabase = {
     .map((m, i) => ({ mois: m + "-01", taux: [0.5, 0.4, 0.45, 0.3, 0.6, 0.856, 0.682, 0.541, 0.404, 0.19, 0.178, 0.25][i], en_cours: i === 11 })),
 };
 
+// Ce que le faux dépôt a écrit, pour vérifier le contenu du commit
+export const ecrits = [];
+
 globalThis.fetch = async (url, opts = {}) => {
   const u = new URL(url);
   const json = (o, s = 200) => new Response(JSON.stringify(o), { status: s });
   if (u.host === "api.github.com") {
+    // Écriture d'un fichier du registre
+    if (opts.method === "PUT") {
+      const corps = JSON.parse(opts.body);
+      const octets = Uint8Array.from(atob(corps.content), (c) => c.charCodeAt(0));
+      ecrits.push({ chemin: u.pathname, contenu: new TextDecoder().decode(octets), message: corps.message, sha: corps.sha });
+      return json({ commit: { sha: "abc" } });
+    }
+    // Lecture avec empreinte (l'édition en a besoin) : même contenu, encodé
+    if (/\/contents\/pilotage\/[^/]+$/.test(u.pathname) && !opts.headers?.Accept?.includes("raw")) {
+      const brut = reponses[u.pathname];
+      if (typeof brut !== "string") return new Response("", { status: 404 });
+      const octets = new TextEncoder().encode(brut);
+      let binaire = "";
+      for (const o of octets) binaire += String.fromCharCode(o);
+      return json({ content: btoa(binaire), sha: "sha-du-fichier" });
+    }
     const r = reponses[u.pathname];
     if (r === undefined) return new Response("", { status: 404 });
     return typeof r === "string" ? new Response(r) : json(r);
@@ -125,6 +144,12 @@ globalThis.fetch = async (url, opts = {}) => {
 const env = {
   MOT_DE_PASSE: "sesame", MOT_DE_PASSE_INVESTISSEUR: "associe", GITHUB_TOKEN: "x", SUPABASE_ANON_KEY: "sb_publishable_x", SUPABASE_CLE_TABLEAU: "cle-ok",
   SUPABASE_URL: "https://exemple.supabase.co", GITHUB_ORG: "LaKasbahSalam",
+};
+
+/** Le titre du premier fait du fichier d'exemple, tel qu'il est écrit. */
+const faitsTitre = () => {
+  const brut = reponses["/repos/LaKasbahSalam/Kasbah-Analytique/contents/pilotage/2026-09.md"];
+  return (brut.match(/^### (.+)$/m) || [])[1];
 };
 
 let echecs = 0;
@@ -220,6 +245,47 @@ const sommaire = (page.match(/class="sommaire"[\s\S]*?<\/nav>/) || [""])[0];
 verifier(/#chiffres/.test(sommaire) && /#technique/.test(sommaire) && /#depots/.test(sommaire),
   "le sommaire mène à toutes les sections, la vue équipe comprise");
 verifier(!sommaire.includes("#depots") === false, "la section outils n'est que pour l'équipe");
+
+// --- Modifier un bloc du registre
+r = await worker.fetch(new Request("https://t.dev/modifier?f=2026-09.md&i=0", { headers: { Cookie: cookie } }), env);
+const form = await r.text();
+verifier(r.status === 200 && form.includes("<textarea"), "le formulaire s'ouvre sur le bloc");
+verifier(form.includes("Revenus · Décision · Snack".replace(/·/g, "·")), "le texte brut du bloc y est");
+verifier(form.includes('name="titre"'), "le titre attendu voyage avec le formulaire, comme garde-fou");
+
+const champs = new FormData();
+champs.set("f", "2026-09.md");
+champs.set("i", "0");
+champs.set("titre", (page.match(/./) && faitsTitre()) || "");
+champs.set("texte", "### 21/09/2026 · Revenus · Décision · Snack\n\n**Effet** : corrigé depuis la page.\n\nTexte revu.");
+champs.set("action", "enregistrer");
+r = await worker.fetch(new Request("https://t.dev/modifier", { method: "POST", body: champs, headers: { Cookie: cookie } }), env);
+verifier(r.status === 303, "enregistrer renvoie au tableau de bord");
+verifier(ecrits.length === 1 && ecrits[0].contenu.includes("corrigé depuis la page"), "le fichier écrit contient la correction");
+verifier(ecrits[0].contenu.includes("Outils · Incident"), "l'autre fait du fichier est intact");
+verifier(ecrits[0].sha === "sha-du-fichier", "l'empreinte est renvoyée : pas d'écrasement d'une version plus récente");
+
+// Un titre qui ne correspond plus : on refuse plutôt que d'écraser le mauvais bloc
+const faux = new FormData();
+faux.set("f", "2026-09.md"); faux.set("i", "0"); faux.set("titre", "un titre qui n'existe pas");
+faux.set("texte", "peu importe"); faux.set("action", "enregistrer");
+r = await worker.fetch(new Request("https://t.dev/modifier", { method: "POST", body: faux, headers: { Cookie: cookie } }), env);
+verifier(r.status === 409 && ecrits.length === 1, "un bloc qui a bougé n'est pas écrasé");
+
+// Supprimer
+const retrait = new FormData();
+retrait.set("f", "2026-09.md"); retrait.set("i", "0"); retrait.set("titre", faitsTitre());
+retrait.set("action", "supprimer");
+r = await worker.fetch(new Request("https://t.dev/modifier", { method: "POST", body: retrait, headers: { Cookie: cookie } }), env);
+verifier(r.status === 303 && ecrits.length === 2 && !ecrits[1].contenu.includes("panini"), "supprimer retire le bloc");
+verifier(ecrits[1].contenu.includes("Outils · Incident"), "et ne touche pas au reste du fichier");
+verifier(/Retire un fait/.test(ecrits[1].message), "le commit dit ce qui a été fait");
+
+// L'associé ne peut pas modifier
+r = await worker.fetch(new Request("https://t.dev/modifier?f=2026-09.md&i=0", { headers: { Cookie: cookieAssocie } }), env);
+verifier(r.status === 403, "l'associé ne peut pas modifier le registre");
+verifier(!vueAssocie.includes("/modifier"), "et n'en voit même pas les liens");
+verifier(page.includes("/modifier"), "l'équipe, elle, a un lien Modifier sur chaque bloc");
 
 if (process.argv[2]) fs.writeFileSync(process.argv[2], page);
 if (process.argv[3]) fs.writeFileSync(process.argv[3], vueAssocie);

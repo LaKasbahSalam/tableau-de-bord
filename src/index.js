@@ -11,9 +11,10 @@
  * Les réponses sont gardées 3 minutes par instance ; `?rafraichir=1` force
  * une nouvelle lecture.
  */
-import { lireTout } from "./sources.js";
+import { lireTout, lireFichierRegistre, ecrireFichierRegistre } from "./sources.js";
 import { analyser } from "./analyse.js";
-import { pageTableau, pageConnexion } from "./page.js";
+import { pageTableau, pageEdition, pageConnexion } from "./page.js";
+import { lireProjets, lireFaits, remplacerBloc } from "./registre.js";
 
 const COOKIE = "kasbah_tdb";
 const DUREE_CACHE_MS = 3 * 60 * 1000;
@@ -71,12 +72,72 @@ export default {
       return html(pageConnexion({}), 401);
     }
 
+    // Modifier ou retirer un bloc du registre : réservé à l'équipe.
+    if (url.pathname === "/modifier") {
+      if (associe) return new Response("Réservé à l'équipe", { status: 403 });
+      return modifier(requete, env, url);
+    }
+
     if (url.pathname !== "/") return new Response("Introuvable", { status: 404 });
 
     const donnees = await lues(env, url.searchParams.has("rafraichir"));
     return html(pageTableau(analyser(donnees, new Date()), new Date(cache.quand), associe));
   },
 };
+
+/** Retrouve un bloc dans un fichier du registre, par son rang. */
+function blocDe(contenu, fichier, index) {
+  const blocs = fichier === "projets.md"
+    ? lireProjets(contenu)
+    : lireFaits([{ nom: fichier, contenu }]).slice().sort((a, b) => a.index - b.index);
+  return blocs.find((b) => b.index === Number(index));
+}
+
+/** Le formulaire, puis l'enregistrement — un commit par modification. */
+async function modifier(requete, env, url) {
+  const rendre = (params, status = 200) => html(pageEdition(params), status);
+
+  if (requete.method === "GET") {
+    const fichier = url.searchParams.get("f") || "";
+    const index = url.searchParams.get("i") || "0";
+    try {
+      const { contenu } = await lireFichierRegistre(env, fichier);
+      const bloc = blocDe(contenu, fichier, index);
+      if (!bloc) return new Response("Bloc introuvable", { status: 404 });
+      return rendre({ fichier, index, bloc, quoi: fichier === "projets.md" ? "projet" : "fait" });
+    } catch (e) {
+      return new Response(String(e.message || e), { status: 502 });
+    }
+  }
+
+  if (requete.method !== "POST") return new Response("Méthode refusée", { status: 405 });
+
+  const form = await requete.formData();
+  const fichier = String(form.get("f") || "");
+  const index = String(form.get("i") || "0");
+  const titre = String(form.get("titre") || "");
+  const texte = String(form.get("texte") || "");
+  const supprimer = form.get("action") === "supprimer";
+
+  try {
+    const { contenu, sha } = await lireFichierRegistre(env, fichier);
+    const bloc = blocDe(contenu, fichier, index);
+    if (!bloc) throw new Error("Ce bloc n'existe plus : recharge la page.");
+    const nouveauContenu = remplacerBloc(
+      contenu,
+      { debut: bloc.debut, fin: bloc.fin, titreAttendu: titre },
+      supprimer ? "" : texte,
+    );
+    const quoi = fichier === "projets.md" ? "projet" : "fait";
+    await ecrireFichierRegistre(env, fichier, nouveauContenu, sha,
+      `${supprimer ? "Retire" : "Corrige"} un ${quoi} du registre (depuis le tableau de bord)`);
+    cache = null; // la page doit relire tout de suite
+    return new Response(null, { status: 303, headers: { Location: "/" } });
+  } catch (e) {
+    const secours = { titre, brut: texte };
+    return rendre({ fichier, index, bloc: secours, erreur: String(e.message || e), quoi: fichier === "projets.md" ? "projet" : "fait" }, 409);
+  }
+}
 
 /** Les lectures sont gardées 3 minutes, pour les deux vues. */
 async function lues(env, forcer) {

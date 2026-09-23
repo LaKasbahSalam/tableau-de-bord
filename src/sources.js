@@ -116,7 +116,14 @@ async function lireRegistre(env) {
     gh(`${base}/technique.md`, true),
     ...mois.map((n) => gh(`${base}/${n}`, true)),
   ]);
-  return { ok: true, donnees: { projets: projets || "", technique: technique || "", mois: contenus.filter(Boolean) } };
+  return {
+    ok: true,
+    donnees: {
+      projets: projets || "",
+      technique: technique || "",
+      mois: mois.map((nom, i) => ({ nom, contenu: contenus[i] || "" })).filter((f) => f.contenu),
+    },
+  };
 }
 
 // ---------------------------------------------------------------- Supabase
@@ -142,4 +149,52 @@ async function lireSupabase(env) {
     throw new Error(`Supabase ${r.status}`);
   }
   return { ok: true, donnees: await r.json() };
+}
+
+
+// ------------------------------------------------- Écrire dans le registre
+
+const DEPOT_REGISTRE = "Kasbah-Analytique";
+const NOM_VALIDE = /^(projets|technique|\d{4}-\d{2})\.md$/;
+
+function entetesGithub(env, brut = false) {
+  return {
+    Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+    Accept: brut ? "application/vnd.github.raw" : "application/vnd.github+json",
+    "User-Agent": "kasbah-tableau-de-bord",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "Content-Type": "application/json",
+  };
+}
+
+/** Un fichier du registre, avec son empreinte (`sha`) — nécessaire pour écrire. */
+export async function lireFichierRegistre(env, nom) {
+  if (!NOM_VALIDE.test(nom)) throw new Error("Nom de fichier refusé.");
+  const org = env.GITHUB_ORG || "LaKasbahSalam";
+  const r = await fetch(`https://api.github.com/repos/${org}/${DEPOT_REGISTRE}/contents/pilotage/${nom}`,
+    { headers: entetesGithub(env) });
+  if (!r.ok) throw new Error(`GitHub ${r.status} à la lecture de ${nom}`);
+  const j = await r.json();
+  // atob rend des octets : il faut les relire en UTF-8, sinon les accents se perdent.
+  const octets = Uint8Array.from(atob(j.content.replace(/\n/g, "")), (c) => c.charCodeAt(0));
+  return { contenu: new TextDecoder().decode(octets), sha: j.sha };
+}
+
+/** Écrit le fichier, en commit. `sha` garantit qu'on n'écrase pas une version plus récente. */
+export async function ecrireFichierRegistre(env, nom, contenu, sha, message) {
+  if (!NOM_VALIDE.test(nom)) throw new Error("Nom de fichier refusé.");
+  const org = env.GITHUB_ORG || "LaKasbahSalam";
+  const octets = new TextEncoder().encode(contenu);
+  let binaire = "";
+  for (const o of octets) binaire += String.fromCharCode(o);
+  const r = await fetch(`https://api.github.com/repos/${org}/${DEPOT_REGISTRE}/contents/pilotage/${nom}`, {
+    method: "PUT",
+    headers: entetesGithub(env),
+    body: JSON.stringify({ message, content: btoa(binaire), sha }),
+  });
+  if (r.status === 409) throw new Error("Quelqu'un a modifié le fichier entre-temps. Recharge la page et recommence.");
+  if (r.status === 403 || r.status === 404) {
+    throw new Error("GitHub refuse d'écrire : la clé doit avoir la permission « Contents : Read and write » sur le dépôt Kasbah-Analytique.");
+  }
+  if (!r.ok) throw new Error(`GitHub ${r.status} à l'écriture de ${nom}`);
 }
