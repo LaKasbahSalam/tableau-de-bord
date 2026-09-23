@@ -4,7 +4,7 @@
  * projet, projets Notion ouverts, occupation.
  */
 
-import { lireProjets, lireFaits, parDomaine, slugProjet } from "./registre.js";
+import { lireProjets, lireFaits, lirePrevisions, parDomaine, slugProjet } from "./registre.js";
 
 const FUSEAU = "Africa/Casablanca";
 
@@ -307,6 +307,10 @@ export function analyser({ github, registre, supabase }, maintenant) {
   }
   for (const d of depots) if (!d.ok) alerte("info", `${d.nom} n'est pas lu`, d.erreur, "GitHub", true);
 
+  const previsions = registre.ok && registre.donnees.previsions
+    ? comparerPrevisions(lirePrevisions(registre.donnees.previsions), sb ? sb.chiffres : null)
+    : null;
+
   const rang = { crit: 0, warn: 1, info: 2 };
   alertes.sort((a, b) => rang[a.niveau] - rang[b.niveau]);
 
@@ -322,7 +326,44 @@ export function analyser({ github, registre, supabase }, maintenant) {
     faits,
     faits_par_domaine: parDomaine(faits, ici.jour, 30),
     chiffres: sb ? sb.chiffres : null,
+    previsions,
     occupation: sb ? sb.occupation : null,
     etat: { github: github.ok, registre: registre.ok, supabase: supabase.ok },
   };
+}
+
+// ------------------------------------------------------------- Prévu contre réel
+
+/**
+ * Met en face des hypothèses du scénario de référence ce que l'exercice en
+ * cours a vraiment donné : taux d'occupation, ADR encaissé, et résultat net
+ * moyen des mois terminés (le mois en cours, partiel, tirerait la moyenne
+ * vers le bas). Le résultat net du CdR sert d'approximation de l'EBITDA du
+ * modèle : il est un peu en dessous (amortissements, intérêts).
+ */
+export function comparerPrevisions(prev, chiffres) {
+  const ref = prev.scenarios.find((s) => s.reference);
+  const ex = chiffres && chiffres.exercice;
+  const mo = chiffres && chiffres.mois;
+  const comparaison = [];
+  if (ref && ex) {
+    const niveau = (reel, prevu) => {
+      if (reel == null || !prevu) return "idle";
+      const r = reel / prevu;
+      return r >= 1 ? "ok" : r >= 0.85 ? "warn" : "crit";
+    };
+    const ligne = (titre, aide, prevu, reel, unite) => comparaison.push({
+      titre, aide, prevu, reel, unite, niveau: niveau(reel, prevu),
+      ecart: reel == null || !prevu ? null : reel / prevu - 1,
+    });
+    ligne("Taux d'occupation", "Exercice en cours, places vendues sur 17", ref.to, ex.taux_occupation ?? null, "pourcent");
+    ligne("ADR", "Exercice en cours, encaissé (CdR) sur les mois terminés", ref.adr, ex.adr_encaisse ?? null, "dh");
+    // Mois terminés : on retire le mois en cours quand l'exercice le compte.
+    const moisEnCours = mo && ex.jusqua && mo.depuis === ex.jusqua;
+    const n = (ex.mois_comptes || 0) - (moisEnCours ? 1 : 0);
+    const net = ex.resultat_net == null ? null : ex.resultat_net - (moisEnCours ? (mo.resultat_net || 0) : 0);
+    ligne("Résultat net par mois", n > 0 ? `Moyenne des ${n} mois terminés de l'exercice, face à l'EBITDA du modèle` : "Pas encore de mois terminé sur l'exercice",
+      ref.ebitda_mois, n > 0 && net != null ? net / n : null, "dh");
+  }
+  return { ...prev, reference: ref ? ref.nom : null, comparaison };
 }

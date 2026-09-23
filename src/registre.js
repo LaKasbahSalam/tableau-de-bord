@@ -128,3 +128,92 @@ export function parDomaine(faits, jusqua, jours = 30) {
   for (const f of faits) if (f.date >= limite) compte[f.domaine] = (compte[f.domaine] || 0) + 1;
   return compte;
 }
+
+// ---------------------------------------------------------------- Prévisions
+
+/** « 20 000 MAD », « 10,8 », « 60 % » → le premier nombre, ou null. */
+const nombres = (s) => (String(s || "").replace(/[\s  ]/g, "").replace(/,/g, ".").match(/\d+(?:\.\d+)?/g) || []).map(Number);
+const premier = (s) => { const n = nombres(s); return n.length ? n[0] : null; };
+/** « 3× à 4× » → [3, 4] ; « 5× » → [5, 5]. */
+const fourchette = (s) => { const n = nombres(s); return n.length ? [n[0], n.length > 1 ? n[1] : n[0]] : null; };
+/** « 60 % » ou « 0,6 » → 0.6. */
+const part = (v) => (v == null ? null : v > 1 ? v / 100 : v);
+const cle = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z]+/g, " ").trim();
+
+/** Les lignes `**Libellé :** valeur` d'un texte → { libellé normalisé: valeur }, et le reste en texte libre. */
+function champs(lignes) {
+  const vus = {};
+  const reste = [];
+  for (const ligne of lignes) {
+    const m = ligne.match(/^\s*(?:[-*]\s+)?\*\*(.+?)\s*:\s*\*\*\s*(.*)$/);
+    if (m) vus[cle(m[1])] = m[2].trim();
+    else reste.push(ligne);
+  }
+  return { vus, reste };
+}
+
+/**
+ * `previsions.md` → les réglages communs (en tête du fichier) et un
+ * scénario par bloc `## Nom`. Un bloc sans « Lits » est une note (la
+ * lecture, la conclusion) : il s'affiche comme du texte.
+ *
+ * Seules les hypothèses sont écrites dans le fichier ; tout ce qui en
+ * découle (revenu, EBITDA, valorisations) est recalculé ici, pour qu'une
+ * hypothèse corrigée corrige tout le reste.
+ */
+export function lirePrevisions(md) {
+  const texte = String(md || "");
+  const blocs = decouper(texte, "##");
+  const tete = texte.split(/\r?\n/).slice(0, blocs.length ? blocs[0].debut : undefined);
+  const { vus: g, reste: intro } = champs(tete.filter((l) => !/^#\s/.test(l)));
+
+  const reglages = {
+    taux: premier(g["taux"]) || 10.8,
+    multiple_revenus: fourchette(g["multiple de revenus"]) || [1.5, 2.5],
+    cap_rate: (fourchette(g["cap rate"]) || [10, 12]).map(part),
+    source: (String(g["source"] || "").match(/https?:\/\/\S+/) || [""])[0].replace(/[)>]+$/, ""),
+    // Le premier paragraphe seulement : la suite explique le fichier à qui l'édite.
+    intro: intro.join("\n").trim().split(/\n\s*\n/)[0].split("\n").map((l) => l.trim()).join(" "),
+  };
+
+  const scenarios = [];
+  const notes = [];
+  blocs.forEach((b, index) => {
+    const [nom, ...marques] = b.titre.split("·").map((x) => x.trim());
+    const { vus, reste } = champs(b.corps);
+    const base = { nom, index, fichier: "previsions.md", debut: b.debut, fin: b.fin, brut: b.brut, titre: b.titre };
+    const corps = reste.join("\n").trim();
+    if (vus["lits"] == null) { notes.push({ ...base, corps }); return; }
+
+    const lits = premier(vus["lits"]);
+    const to = part(premier(vus["taux d occupation"] ?? vus["to"]));
+    const adr = premier(vus["adr"]);
+    const charges = premier(vus["charges"]) || 0;
+    const multiple = fourchette(vus["multiple d ebitda"] ?? vus["multiple"]) || [0, 0];
+    const complet = lits != null && to != null && adr != null;
+    // CA = lits × ADR × TO × 30 jours — la formule du classeur.
+    const revenu_mois = complet ? lits * adr * to * 30 : null;
+    const ebitda_mois = complet ? revenu_mois - charges : null;
+    const ebitda_an_eur = complet ? (ebitda_mois * 12) / reglages.taux : null;
+    const ca_an_eur = complet ? (revenu_mois * 12) / reglages.taux : null;
+    scenarios.push({
+      ...base,
+      reference: marques.some((m) => /r[ée]f[ée]rence/i.test(m)),
+      lits, to, adr, charges, multiple,
+      revenu_mois, ebitda_mois, ebitda_an: complet ? ebitda_mois * 12 : null, ebitda_an_eur,
+      texte: reste.map((l) => l.trim()).filter(Boolean).join(" "),
+      valorisations: complet ? [
+        { methode: "Multiple d'EBITDA", hypothese: `${fr(multiple[0])}× à ${fr(multiple[1])}×`,
+          basse: ebitda_an_eur * multiple[0], haute: ebitda_an_eur * multiple[1] },
+        { methode: "Multiple de revenus", hypothese: `${fr(reglages.multiple_revenus[0])}× à ${fr(reglages.multiple_revenus[1])}× le CA`,
+          basse: ca_an_eur * reglages.multiple_revenus[0], haute: ca_an_eur * reglages.multiple_revenus[1] },
+        { methode: "Cap rate", hypothese: `${fr(reglages.cap_rate[0] * 100)} % à ${fr(reglages.cap_rate[1] * 100)} %`,
+          basse: ebitda_an_eur / Math.max(...reglages.cap_rate), haute: ebitda_an_eur / Math.min(...reglages.cap_rate) },
+      ] : [],
+    });
+  });
+  if (scenarios.length && !scenarios.some((s) => s.reference)) scenarios[0].reference = true;
+  return { reglages, scenarios, notes };
+}
+
+const fr = (n) => Number(n).toLocaleString("fr-FR", { maximumFractionDigits: 2 });

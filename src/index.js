@@ -18,7 +18,7 @@ import {
 } from "./sources.js";
 import { analyser } from "./analyse.js";
 import { pageTableau, pageEdition, pageDocuments, pageConnexion } from "./page.js";
-import { lireProjets, lireFaits, remplacerBloc, slugProjet } from "./registre.js";
+import { lireProjets, lireFaits, lirePrevisions, remplacerBloc, slugProjet } from "./registre.js";
 
 const COOKIE = "kasbah_tdb";
 const DUREE_CACHE_MS = 3 * 60 * 1000;
@@ -102,11 +102,17 @@ export default {
 
 /** Retrouve un bloc dans un fichier du registre, par son rang. */
 function blocDe(contenu, fichier, index) {
-  const blocs = fichier === "projets.md"
-    ? lireProjets(contenu)
-    : lireFaits([{ nom: fichier, contenu }]).slice().sort((a, b) => a.index - b.index);
+  let blocs;
+  if (fichier === "projets.md") blocs = lireProjets(contenu);
+  else if (fichier === "previsions.md") {
+    const p = lirePrevisions(contenu);
+    blocs = [...p.scenarios, ...p.notes];
+  } else blocs = lireFaits([{ nom: fichier, contenu }]).slice().sort((a, b) => a.index - b.index);
   return blocs.find((b) => b.index === Number(index));
 }
+
+/** Ce qu'on modifie, pour les titres et les messages de commit. */
+const quoiDe = (fichier) => (fichier === "projets.md" ? "projet" : fichier === "previsions.md" ? "scénario" : "fait");
 
 /** Le formulaire, puis l'enregistrement — un commit par modification. */
 async function modifier(requete, env, url) {
@@ -119,7 +125,7 @@ async function modifier(requete, env, url) {
       const { contenu } = await lireFichierRegistre(env, fichier);
       const bloc = blocDe(contenu, fichier, index);
       if (!bloc) return new Response("Bloc introuvable", { status: 404 });
-      return rendre({ fichier, index, bloc, quoi: fichier === "projets.md" ? "projet" : "fait" });
+      return rendre({ fichier, index, bloc, quoi: quoiDe(fichier) });
     } catch (e) {
       return new Response(String(e.message || e), { status: 502 });
     }
@@ -143,14 +149,14 @@ async function modifier(requete, env, url) {
       { debut: bloc.debut, fin: bloc.fin, titreAttendu: titre },
       supprimer ? "" : texte,
     );
-    const quoi = fichier === "projets.md" ? "projet" : "fait";
+    const quoi = quoiDe(fichier);
     await ecrireFichierRegistre(env, fichier, nouveauContenu, sha,
       `${supprimer ? "Retire" : "Corrige"} un ${quoi} du registre (depuis le tableau de bord)`);
     cache = null; // la page doit relire tout de suite
-    return new Response(null, { status: 303, headers: { Location: "/" } });
+    return new Response(null, { status: 303, headers: { Location: fichier === "previsions.md" ? "/#previsions" : "/" } });
   } catch (e) {
     const secours = { titre, brut: texte };
-    return rendre({ fichier, index, bloc: secours, erreur: String(e.message || e), quoi: fichier === "projets.md" ? "projet" : "fait" }, 409);
+    return rendre({ fichier, index, bloc: secours, erreur: String(e.message || e), quoi: quoiDe(fichier) }, 409);
   }
 }
 

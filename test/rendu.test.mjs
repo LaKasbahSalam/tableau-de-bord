@@ -77,6 +77,7 @@ Le vendeur touche une prime sur ce qu'il vend.
 
 La fonction de vente échouait à chaque appel.
 `,
+  "/repos/LaKasbahSalam/Kasbah-Analytique/contents/pilotage/previsions.md": lire("Kasbah-Analytique/pilotage/previsions.md"),
   // tresorerie : dépôt pas encore créé -> 404
 };
 
@@ -452,6 +453,45 @@ r = await worker.fetch(new Request("https://t.dev/documents?i=0", { headers: { C
 const pageLienRemplace = await r.text();
 verifier(pageLienRemplace.includes("https://drive.google.com/nouveau") && !pageLienRemplace.includes("https://drive.google.com/xyz"),
   "le lien est remplacé, pas dupliqué");
+
+// --- Les prévisions (modèle « Hôtel + Extension », pilotage/previsions.md)
+const { lirePrevisions } = await import("../src/registre.js");
+const prevTexte = reponses["/repos/LaKasbahSalam/Kasbah-Analytique/contents/pilotage/previsions.md"];
+if (prevTexte) {
+  const prev = lirePrevisions(prevTexte);
+  const actuel = prev.scenarios.find((s) => s.nom === "État actuel");
+  verifier(prev.scenarios.length === 4 && prev.notes.length === 1, "quatre scénarios et une note de lecture");
+  verifier(actuel && actuel.reference && Math.round(actuel.revenu_mois) === 35190 && Math.round(actuel.ebitda_mois) === 15190,
+    "état actuel : 35 190 DH de revenu et 15 190 DH d'EBITDA par mois, comme le classeur");
+  verifier(actuel && Math.round(actuel.valorisations[0].basse) === 50633 && Math.round(actuel.valorisations[0].haute) === 67511,
+    "état actuel : valorisation 50 633 à 67 511 € (EBITDA × 3 à 4)");
+  verifier(actuel && Math.round(actuel.valorisations[2].basse) === 140648 && Math.round(actuel.valorisations[2].haute) === 168778,
+    "cap rate 10 à 12 % : 140 648 à 168 778 €");
+  const dvt = prev.scenarios.find((s) => /2030/.test(s.nom));
+  verifier(dvt && Math.round(dvt.ebitda_an) === 573600 && Math.round(dvt.valorisations[0].haute) === 424889, "Kasbah 2030 : 573 600 DH par an, jusqu'à 424 889 €");
+  verifier(prev.reglages.source.startsWith("https://docs.google.com/"), "le lien vers le classeur est repris");
+
+  const p2 = page.replace(/[  ]/g, " ");
+  verifier(page.indexOf("Les prévisions") > page.indexOf("Les chiffres") && page.indexOf("Les prévisions") < page.indexOf("Ce qui demande une action"),
+    "les prévisions viennent juste après les chiffres");
+  verifier(p2.includes("35 190 DH") && p2.includes("51 à 68 k€"), "le tableau des scénarios est rendu");
+  // Réel : TO 35,2 % face à 60 % ; résultat net des 2 mois terminés (15 000 − 2 000) / 2 = 6 500 face à 15 190
+  verifier(p2.includes("Prévu contre réel") && p2.includes("6 500 DH") && p2.includes("−41 % face au prévu"), "prévu contre réel, sans le mois en cours");
+  verifier(page.includes("/modifier?f=previsions.md&i=0"), "l'équipe peut modifier un scénario");
+  verifier(vueAssocie.includes("Les prévisions") && !vueAssocie.includes("f=previsions.md"), "l'associé voit les prévisions, sans les modifier");
+
+  r = await worker.fetch(new Request("https://t.dev/modifier?f=previsions.md&i=1", { headers: { Cookie: cookie } }), env);
+  const formPrev = await r.text();
+  verifier(r.status === 200 && formPrev.includes("Modifier un scénario") && formPrev.includes("## 2nd lieu"), "le formulaire d'un scénario s'ouvre");
+  const fp = new FormData();
+  fp.set("f", "previsions.md"); fp.set("i", "1"); fp.set("titre", "2nd lieu");
+  fp.set("texte", "## 2nd lieu\n\n- **Lits :** 25\n- **Taux d'occupation :** 60 %\n- **ADR :** 115 MAD\n- **Charges :** 27 000 MAD par mois\n- **Multiple d'EBITDA :** 4 à 5");
+  r = await worker.fetch(new Request("https://t.dev/modifier", { method: "POST", body: fp, headers: { Cookie: cookie } }), env);
+  const ecritPrev = ecrits[ecrits.length - 1];
+  verifier(r.status === 303 && r.headers.get("Location") === "/#previsions" && ecritPrev.chemin.endsWith("pilotage/previsions.md")
+    && ecritPrev.contenu.includes("**Lits :** 25") && ecritPrev.contenu.includes("## Premium") && /scénario/.test(ecritPrev.message),
+    "corriger un scénario écrit un commit, sans toucher aux autres");
+}
 
 if (process.argv[2]) fs.writeFileSync(process.argv[2], page);
 if (process.argv[3]) fs.writeFileSync(process.argv[3], vueAssocie);

@@ -29,7 +29,7 @@ const CSS = `
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;padding-inline:16px;padding-block:28px 56px}
-.wrap{max-width:1180px;margin:0 auto;display:grid;gap:36px}
+.wrap{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:36px}
 h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.15}
 h1{font-size:clamp(28px,4vw,40px);font-weight:700;letter-spacing:-.01em}
 h2{font-size:20px;font-weight:700}
@@ -158,6 +158,14 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 .doc-repli[open] summary{border-bottom:1px solid var(--line)}
 .doc-repli .doc{border:0;padding:18px 20px 6px}
 .doc-repli .tbl-scroll{border:0;border-radius:0}
+.prev-kpi dd small{display:block;font-size:12px;font-weight:400;letter-spacing:0;margin-top:2px}
+.prev-kpi .pill{margin-top:10px}
+.prev{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+.prev table{min-width:1040px}
+.prev td:first-child{min-width:250px}
+.prev td small{display:block;color:var(--ink-3);font-size:12.5px;max-width:46ch;margin-top:2px}
+.prev tr.ref td:first-child b::after{content:"référence";margin-left:8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:2px 7px;vertical-align:1px}
+.prev .sous-bande a{color:var(--accent)}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px}
 .chart svg{width:100%;height:auto;display:block}
 .chart text{font-family:var(--mono);font-size:11px;fill:var(--ink-3)}
@@ -279,6 +287,58 @@ function chiffresHtml(ch) {
 </section>`;
 }
 
+const eur = (v) => (v == null ? "—" : `${Math.round(Number(v)).toLocaleString("fr-FR")} €`);
+/** « 50 633 € » devient « 51 k€ » : les valorisations se lisent en ordre de grandeur. */
+const kEur = (v) => (v == null ? "—" : `${Math.round(Number(v) / 1000).toLocaleString("fr-FR")} k€`);
+const fourchetteK = (a, b) => `${Math.round(a / 1000).toLocaleString("fr-FR")} à ${kEur(b)}`;
+const ecartFr = (e) => (e == null ? "" : `${e >= 0 ? "+" : "−"}${Math.abs(Math.round(e * 100))} %`);
+
+/** Les scénarios du modèle « Hôtel + Extension », et le prévu face au réel. */
+function previsionsHtml(p, peutEditer = false) {
+  if (!p || (!p.scenarios.length && !p.notes.length)) {
+    return `<div class="panne">Pas encore de prévisions : elles se lisent dans <span class="mono">pilotage/previsions.md</span> du dépôt Kasbah-Analytique.</div>`;
+  }
+  const valeur = (v, unite) => (unite === "pourcent" ? pourcent(v) : dh(v));
+  const comparaison = p.comparaison.length ? `<div class="label" style="margin-bottom:8px">Prévu contre réel · scénario « ${esc(p.reference)} »</div>
+  <div class="chiffres prev-kpi">${p.comparaison.map((c) => `<article class="kpi">
+      <h3>${esc(c.titre)}</h3><p class="aide">${esc(c.aide)}</p>
+      <dl class="deux"><dt>Prévu</dt><dd>${esc(valeur(c.prevu, c.unite))}</dd><dt>Réel</dt><dd>${esc(valeur(c.reel, c.unite))}</dd></dl>
+      ${c.ecart == null ? "" : `<span class="pill p-${c.niveau}">${esc(ecartFr(c.ecart))} face au prévu</span>`}
+    </article>`).join("")}</div>` : "";
+
+  const lignes = p.scenarios.map((x) => `<tr${x.reference ? ' class="ref"' : ""}>
+      <td><b>${esc(x.nom)}</b>${x.texte ? `<small>${md(x.texte)}</small>` : ""}</td>
+      <td class="num">${esc(x.lits ?? "—")}</td>
+      <td class="num">${esc(pourcent(x.to))}</td>
+      <td class="num">${esc(dh(x.adr))}</td>
+      <td class="num">${esc(dh(x.revenu_mois))}</td>
+      <td class="num">${esc(dh(x.charges))}</td>
+      <td class="num">${esc(dh(x.ebitda_mois))}</td>
+      <td class="num">${esc(dh(x.ebitda_an))}<small>${esc(eur(x.ebitda_an_eur))}</small></td>
+      <td class="num">${esc(x.valorisations[0] ? x.valorisations[0].hypothese : "—")}</td>
+      <td class="num">${x.valorisations[0] ? esc(fourchetteK(x.valorisations[0].basse, x.valorisations[0].haute)) : "—"}</td>
+      ${peutEditer ? `<td class="num"><a class="editer" href="/modifier?f=previsions.md&i=${x.index}">Modifier</a></td>` : ""}
+    </tr>`).join("");
+
+  const croisees = p.scenarios.filter((x) => x.valorisations.length).flatMap((x) => x.valorisations.map((v, i) => `<tr>
+      <td>${i === 0 ? `<b>${esc(x.nom)}</b>` : ""}</td><td>${esc(v.methode)}</td><td class="num">${esc(v.hypothese)}</td>
+      <td class="num">${esc(eur(v.basse))}</td><td class="num">${esc(eur(v.haute))}</td></tr>`)).join("");
+
+  const r = p.reglages;
+  return `<div class="prev">
+  ${r.intro ? `<p class="note">${md(r.intro)}</p>` : ""}
+  ${comparaison}
+  <div class="tbl-scroll"><table>
+    <thead><tr><th>Scénario</th><th>Lits</th><th>TO</th><th>ADR</th><th>Revenu / mois</th><th>Charges / mois</th><th>EBITDA / mois</th><th>EBITDA / an</th><th>Multiple</th><th>Valorisation</th>${peutEditer ? "<th></th>" : ""}</tr></thead>
+    <tbody>${lignes}</tbody></table></div>
+  ${croisees ? `<details class="doc-repli"><summary>Valorisation : trois méthodes croisées</summary>
+    <div class="tbl-scroll"><table><thead><tr><th>Scénario</th><th>Méthode</th><th>Hypothèse</th><th>Basse</th><th>Haute</th></tr></thead><tbody>${croisees}</tbody></table></div></details>` : ""}
+  ${p.notes.map((n) => `<details class="doc-repli"><summary>${esc(n.nom)}</summary>
+    <article class="doc">${rendreMarkdown(n.corps)}${peutEditer ? `<a class="editer" href="/modifier?f=previsions.md&i=${n.index}">Modifier</a>` : ""}</article></details>`).join("")}
+  <p class="sous-bande" style="margin:0">Revenu = lits × ADR × TO × 30 jours ; EBITDA = revenu − charges ; 1 € = ${esc(String(r.taux).replace(".", ","))} MAD. Tout est recalculé depuis les hypothèses${r.source ? ` · <a href="${esc(r.source)}" target="_blank" rel="noopener">le classeur d'origine</a>` : ""}.</p>
+</div>`;
+}
+
 function occupationHtml(occ) {
   if (!occ || !occ.length) return "";
   const W = 520, H = 230, base = 190, haut = 10, g = 40, d = 510;
@@ -351,6 +411,7 @@ export function pageTableau(v, lu, associe = false) {
 
   const sommaire = [
     ["chiffres", "Les chiffres"],
+    ["previsions", "Les prévisions"],
     ["action", "\u00c0 faire"],
     ["faits", "Ce qui s'est fait"],
     ["nuit", "Les t\u00e2ches automatiques"],
@@ -379,6 +440,11 @@ export function pageTableau(v, lu, associe = false) {
 
 <section id="chiffres" aria-labelledby="h-chiffres">
   ${chiffresHtml(v.chiffres)}
+</section>
+
+<section id="previsions" aria-labelledby="h-prev">
+  <div class="section-head"><h2 id="h-prev">Les prévisions</h2><p>Modèle « Hôtel + Extension » · <span class="mono">pilotage/previsions.md</span></p></div>
+  ${previsionsHtml(v.previsions, !associe)}
 </section>
 
 <section id="action" aria-labelledby="h-att">
@@ -434,7 +500,7 @@ export function pageEdition({ fichier, index, bloc, erreur, quoi }) {
 <header class="top">
   <div>
     <div class="eyebrow">La Kasbah Salam · Fès</div>
-    <h1>Modifier ${quoi === "projet" ? "un projet" : "un fait"}</h1>
+    <h1>Modifier ${quoi === "projet" ? "un projet" : quoi === "scénario" ? "un scénario" : "un fait"}</h1>
     <p>Le texte ci-dessous est celui du fichier <span class="mono">pilotage/${esc(fichier)}</span>. Ce qui est enregistré ici devient un commit dans le dépôt : rien ne se perd, tout se retrouve.</p>
   </div>
   <div class="stamp"><a class="btn" href="/">← Retour au tableau de bord</a></div>
@@ -449,6 +515,8 @@ export function pageEdition({ fichier, index, bloc, erreur, quoi }) {
   <textarea id="texte" name="texte" spellcheck="true">${esc(bloc.brut)}</textarea>
   <p class="aide">${quoi === "projet"
     ? "Première ligne : <code>## Nom · Statut · Domaine · Responsable</code>. Statuts : En cours, À faire, En attente, Plus tard, Terminé."
+    : quoi === "scénario"
+    ? "Première ligne : <code>## Nom</code> (ajouter <code>· Référence</code> pour le scénario comparé au réel). Puis les hypothèses : <code>**Lits :**</code>, <code>**Taux d'occupation :**</code>, <code>**ADR :**</code>, <code>**Charges :**</code> (MAD par mois), <code>**Multiple d'EBITDA :**</code>. Le revenu, l'EBITDA et les valorisations se recalculent seuls."
     : "Première ligne : <code>### JJ/MM/AAAA · Domaine · Nature · Projet</code>. Domaines : Revenus, Coûts, Clients, Équipe, Outils, Conformité. Natures : Décision, Livraison, Incident, Dépense, Risque."}</p>
   <div class="boutons">
     <button class="garder" type="submit" name="action" value="enregistrer">Enregistrer</button>
