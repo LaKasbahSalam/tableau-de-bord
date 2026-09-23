@@ -139,6 +139,7 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 .docs-gerer form{margin:0}
 .docs-gerer button{font:inherit;font-size:12.5px;font-weight:600;padding:6px 10px;border:0;border-radius:6px;cursor:pointer;background:var(--crit-soft);color:var(--crit)}
 .edition input[type=file]{font:inherit;font-size:13.5px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+.edition input[type=text],.edition input[type=url]{font:inherit;font-size:13.5px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);width:100%;display:block;margin-top:6px}
 .edition{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px 22px;display:grid;gap:14px}
 .edition textarea{font-family:var(--mono);font-size:13.5px;line-height:1.55;width:100%;min-height:260px;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);resize:vertical}
 .edition .boutons{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -312,7 +313,7 @@ function projetsHtml(p, peutEditer = false) {
       <td>${esc(x.domaine || "—")}</td><td>${esc(x.responsable || "—")}</td>
       <td class="num">${esc(x.echeanceTexte)}</td>
       <td>${(x.documents || []).length ? `<ul class="docs">${x.documents.map((d) =>
-        `<li><a href="/document?p=${encodeURIComponent(d.chemin)}">${esc(d.nom)}</a></li>`).join("")}</ul>` : ""}
+        `<li><a href="${d.url ? esc(d.url) : `/document?p=${encodeURIComponent(d.chemin)}`}"${d.url ? ' target="_blank" rel="noopener"' : ""}>${esc(d.nom)}</a></li>`).join("")}</ul>` : ""}
         ${peutEditer ? `<a class="editer" href="/documents?i=${x.index}">${(x.documents || []).length ? `Gérer (${x.documents.length}/10)` : "+ Ajouter"}</a>` : (!(x.documents || []).length ? "—" : "")}</td>
       ${peutEditer ? `<td class="num"><a class="editer" href="/modifier?f=projets.md&i=${x.index}">Modifier</a></td>` : ""}
       </tr>`).join("")}</tbody></table></div>`;
@@ -478,8 +479,8 @@ export function pageDocuments({ index, nom, documents, erreur }) {
   ${erreur ? `<p class="err">${esc(erreur)}</p>` : ""}
 
   ${documents.length ? `<ul class="docs-gerer">${documents.map((d) => `<li>
-    <a href="/document?p=${encodeURIComponent(d.chemin)}">${esc(d.nom)}</a>
-    <span>${Math.max(1, Math.round(d.taille / 1024)).toLocaleString("fr-FR")} Ko</span>
+    <a href="${d.url ? esc(d.url) : `/document?p=${encodeURIComponent(d.chemin)}`}"${d.url ? ' target="_blank" rel="noopener"' : ""}>${esc(d.nom)}</a>
+    <span>${d.url ? "lien" : `${Math.max(1, Math.round(d.taille / 1024)).toLocaleString("fr-FR")} Ko`}</span>
     <form method="post" action="/documents" onsubmit="return confirm('Retirer ${esc(d.nom).replace(/'/g, "\\'")} ?')">
       <input type="hidden" name="i" value="${esc(index)}">
       <input type="hidden" name="action" value="supprimer">
@@ -495,6 +496,15 @@ export function pageDocuments({ index, nom, documents, erreur }) {
     <label class="label" for="fichier">Ajouter un document (15 Mo maximum)</label>
     <input id="fichier" name="fichier" type="file" required>
     <div class="boutons"><button class="garder" type="submit">Envoyer</button></div>
+  </form>
+  <p class="aide" style="text-align:center;margin:2px 0">— ou —</p>
+  <form method="post" action="/documents">
+    <input type="hidden" name="i" value="${esc(index)}">
+    <input type="hidden" name="action" value="lien">
+    <label class="label" for="nomLien">Coller un lien (Google Drive, autre)</label>
+    <input id="nomLien" name="nom" type="text" placeholder="Nom, ex. Devis climatisation" required>
+    <input name="url" type="url" placeholder="https://drive.google.com/…" required>
+    <div class="boutons"><button class="garder" type="submit">Ajouter le lien</button></div>
   </form>`}
 </div>
 </div></body></html>`;

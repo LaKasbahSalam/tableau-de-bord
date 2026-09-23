@@ -223,19 +223,38 @@ async function documents(requete, env) {
 
   const liste = await listerDocumentsProjet(env, slug);
   const echec = async (msg, status = 400) => rendre(index, projet.nom, liste, msg, status);
+  const dejaPlein = () => echec(`Déjà ${MAX_DOCUMENTS_PAR_PROJET} documents sur ce projet : retire-en un avant d'en ajouter un autre.`);
+
+  if (form.get("action") === "lien") {
+    const label = String(form.get("nom") || "").trim();
+    const cible = String(form.get("url") || "").trim();
+    if (!label) return echec("Donne un nom à ce lien.");
+    if (!/^https?:\/\//i.test(cible)) return echec("Le lien doit commencer par http:// ou https://.");
+    const nom = `${nomFichierSur(label)}.lien`;
+    const chemin = `${DOSSIER_DOCUMENTS}/${slug}/${nom}`;
+    const existant = liste.find((d) => d.chemin === chemin);
+    if (!existant && liste.length >= MAX_DOCUMENTS_PAR_PROJET) return dejaPlein();
+    try {
+      const octets = new TextEncoder().encode(cible);
+      await ecrireDocument(env, chemin, octetsVersBase64(octets), existant ? existant.sha : null,
+        `${existant ? "Remplace" : "Ajoute"} un lien (${projet.nom}, depuis le tableau de bord)`);
+      cache = null;
+      return new Response(null, { status: 303, headers: { Location: `/documents?i=${index}` } });
+    } catch (e) {
+      return echec(String(e.message || e), 409);
+    }
+  }
 
   const fichier = form.get("fichier");
-  if (!fichier || typeof fichier === "string" || !fichier.size) return echec("Choisis un fichier.");
-  if (liste.length >= MAX_DOCUMENTS_PAR_PROJET) {
-    return echec(`Déjà ${MAX_DOCUMENTS_PAR_PROJET} documents sur ce projet : retire-en un avant d'en ajouter un autre.`);
-  }
+  if (!fichier || typeof fichier === "string" || !fichier.size) return echec("Choisis un fichier, ou colle un lien.");
   if (fichier.size > MAX_OCTETS_DOCUMENT) {
     return echec(`Fichier trop lourd (${Math.round(fichier.size / 1024 / 1024)} Mo) : ${MAX_OCTETS_DOCUMENT / 1024 / 1024} Mo au maximum.`);
   }
 
   const nom = nomFichierSur(fichier.name);
   const chemin = `${DOSSIER_DOCUMENTS}/${slug}/${nom}`;
-  const existant = liste.find((d) => d.nom === nom);
+  const existant = liste.find((d) => d.chemin === chemin);
+  if (!existant && liste.length >= MAX_DOCUMENTS_PAR_PROJET) return dejaPlein();
   try {
     const octets = new Uint8Array(await fichier.arrayBuffer());
     await ecrireDocument(env, chemin, octetsVersBase64(octets), existant ? existant.sha : null,

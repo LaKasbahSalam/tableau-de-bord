@@ -222,6 +222,28 @@ export function octetsVersBase64(octets) {
   return btoa(binaire);
 }
 
+/**
+ * Un « document » `*.lien` ne porte pas un fichier mais une adresse (Google
+ * Drive, ou autre) : son contenu est juste l'URL en texte. On la relit ici
+ * pour que la page pointe dessus directement, sans passer par le proxy de
+ * téléchargement. Peu de liens par projet (max 10) : un appel de plus par
+ * lien reste négligeable.
+ */
+async function resoudreLiens(env, org, fichiers) {
+  return Promise.all(fichiers.map(async (f) => {
+    if (!f.nom.endsWith(".lien")) return f;
+    const r = await fetch(`https://api.github.com/repos/${org}/${DEPOT_REGISTRE}/contents/${f.chemin}`,
+      { headers: entetesGithub(env, true) });
+    const url = r.ok ? (await r.text()).trim() : "";
+    return { ...f, nom: f.nom.replace(/\.lien$/, ""), url };
+  }));
+}
+
+const versDocuments = (liste) => (Array.isArray(liste) ? liste : [])
+  .filter((f) => f.type === "file")
+  .map((f) => ({ nom: f.name, chemin: f.path, taille: f.size, sha: f.sha }))
+  .sort((a, b) => a.nom.localeCompare(b.nom));
+
 /** Les documents de tous les projets, un appel par dossier trouvé sous `pilotage/documents/`. */
 async function listerTousDocuments(env) {
   const org = env.GITHUB_ORG || "LaKasbahSalam";
@@ -234,15 +256,11 @@ async function listerTousDocuments(env) {
   const racine = await gh(`/repos/${org}/${DEPOT_REGISTRE}/contents/${DOSSIER_DOCUMENTS}`);
   if (!Array.isArray(racine)) return {};
   const dossiers = racine.filter((f) => f.type === "dir");
-  const listes = await Promise.all(dossiers.map((d) => gh(`/repos/${org}/${DEPOT_REGISTRE}/contents/${DOSSIER_DOCUMENTS}/${d.name}`)));
-  const documents = {};
-  dossiers.forEach((d, i) => {
-    documents[d.name] = (Array.isArray(listes[i]) ? listes[i] : [])
-      .filter((f) => f.type === "file")
-      .map((f) => ({ nom: f.name, chemin: f.path, taille: f.size, sha: f.sha }))
-      .sort((a, b) => a.nom.localeCompare(b.nom));
-  });
-  return documents;
+  const entrees = await Promise.all(dossiers.map(async (d) => {
+    const liste = await gh(`/repos/${org}/${DEPOT_REGISTRE}/contents/${DOSSIER_DOCUMENTS}/${d.name}`);
+    return [d.name, await resoudreLiens(env, org, versDocuments(liste))];
+  }));
+  return Object.fromEntries(entrees);
 }
 
 /** Les documents d'un seul projet — utilisé par la page d'ajout/retrait, sans relire tout le reste. */
@@ -252,11 +270,7 @@ export async function listerDocumentsProjet(env, slug) {
     { headers: entetesGithub(env) });
   if (r.status === 404) return [];
   if (!r.ok) throw new Error(`GitHub ${r.status} à la lecture des documents de ${slug}`);
-  const liste = await r.json();
-  return (Array.isArray(liste) ? liste : [])
-    .filter((f) => f.type === "file")
-    .map((f) => ({ nom: f.name, chemin: f.path, taille: f.size, sha: f.sha }))
-    .sort((a, b) => a.nom.localeCompare(b.nom));
+  return resoudreLiens(env, org, versDocuments(await r.json()));
 }
 
 /** Le contenu brut d'un document (octets), pour le proposer au téléchargement. */

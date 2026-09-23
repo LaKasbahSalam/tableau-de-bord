@@ -120,7 +120,10 @@ globalThis.fetch = async (url, opts = {}) => {
   const u = new URL(url);
   const json = (o, s = 200) => new Response(JSON.stringify(o), { status: s });
   if (u.host === "api.github.com") {
-    const enChemin = u.pathname.replace(/^\/repos\/[^/]+\/[^/]+\/contents\//, "");
+    // Le vrai GitHub rend un `path` en clair (espaces compris) dans son JSON ;
+    // seule l'URL de la requête est encodée. On décode pour retrouver le
+    // même chemin que le code envoie et que les tests comparent.
+    const enChemin = decodeURIComponent(u.pathname.replace(/^\/repos\/[^/]+\/[^/]+\/contents\//, ""));
     if (/^pilotage\/documents(\/|$)/.test(enChemin)) {
       if (opts.method === "PUT") {
         const corps = JSON.parse(opts.body);
@@ -412,6 +415,43 @@ r = await worker.fetch(new Request("https://t.dev/documents", { method: "POST", 
 verifier(r.status === 303, "retirer un document renvoie à la page du projet");
 r = await worker.fetch(new Request("https://t.dev/documents?i=0", { headers: { Cookie: cookie } }), env);
 verifier(!(await r.text()).includes(">notes.txt<"), "le document retiré n'apparaît plus");
+
+// --- Un lien (Google Drive, ou autre) plutôt qu'un fichier
+// À ce stade, le projet 0 a 9 documents (doc2 à doc10) : une place reste.
+let fdLien = new FormData();
+fdLien.set("i", "0"); fdLien.set("action", "lien");
+fdLien.set("nom", "Devis climatisation"); fdLien.set("url", "https://drive.google.com/xyz");
+r = await worker.fetch(new Request("https://t.dev/documents", { method: "POST", body: fdLien, headers: { Cookie: cookie } }), env);
+verifier(r.status === 303, "ajouter un lien renvoie à la page du projet");
+
+r = await worker.fetch(new Request("https://t.dev/?rafraichir=1", { headers: { Cookie: cookie } }), env);
+const pageAvecLien = await r.text();
+verifier(pageAvecLien.includes('href="https://drive.google.com/xyz"') && pageAvecLien.includes("Devis climatisation"),
+  "le lien pointe directement vers Google Drive, sans passer par le proxy de téléchargement");
+verifier(/href="https:\/\/drive\.google\.com\/xyz"[^>]*target="_blank"/.test(pageAvecLien), "le lien s'ouvre dans un nouvel onglet");
+
+let fdLienTropPlein = new FormData();
+fdLienTropPlein.set("i", "0"); fdLienTropPlein.set("action", "lien");
+fdLienTropPlein.set("nom", "Encore un"); fdLienTropPlein.set("url", "https://drive.google.com/autre");
+r = await worker.fetch(new Request("https://t.dev/documents", { method: "POST", body: fdLienTropPlein, headers: { Cookie: cookie } }), env);
+verifier(r.status === 400 && (await r.text()).includes("Déjà 10 documents"), "un lien de trop se heurte à la même limite de 10");
+
+let fdLienInvalide = new FormData();
+fdLienInvalide.set("i", "0"); fdLienInvalide.set("action", "lien");
+fdLienInvalide.set("nom", "Mauvais lien"); fdLienInvalide.set("url", "pas-une-url");
+r = await worker.fetch(new Request("https://t.dev/documents", { method: "POST", body: fdLienInvalide, headers: { Cookie: cookie } }), env);
+verifier(r.status === 400 && (await r.text()).includes("doit commencer par http"), "un lien qui n'est pas une URL est refusé");
+
+// Remplacer un lien existant (même nom) : même fichier, pas un onzième
+let fdLienRemplace = new FormData();
+fdLienRemplace.set("i", "0"); fdLienRemplace.set("action", "lien");
+fdLienRemplace.set("nom", "Devis climatisation"); fdLienRemplace.set("url", "https://drive.google.com/nouveau");
+r = await worker.fetch(new Request("https://t.dev/documents", { method: "POST", body: fdLienRemplace, headers: { Cookie: cookie } }), env);
+verifier(r.status === 303, "remplacer un lien du même nom passe, même le projet étant plein");
+r = await worker.fetch(new Request("https://t.dev/documents?i=0", { headers: { Cookie: cookie } }), env);
+const pageLienRemplace = await r.text();
+verifier(pageLienRemplace.includes("https://drive.google.com/nouveau") && !pageLienRemplace.includes("https://drive.google.com/xyz"),
+  "le lien est remplacé, pas dupliqué");
 
 if (process.argv[2]) fs.writeFileSync(process.argv[2], page);
 if (process.argv[3]) fs.writeFileSync(process.argv[3], vueAssocie);
