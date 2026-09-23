@@ -268,6 +268,7 @@ export function analyser({ github, registre, supabase }, maintenant) {
   return {
     alertes,
     projets_depots: projets,
+    migrations_recentes: projets.flatMap((f) => (f.migrations_recentes || []).map((nom) => ({ depot: f.nom, nom: nom.replace(/\.sql$/, "") }))),
     compteurs: { crit: alertes.filter((a) => a.niveau === "crit").length, warn: alertes.filter((a) => a.niveau === "warn").length },
     flux,
     projets,

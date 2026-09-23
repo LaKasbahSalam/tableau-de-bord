@@ -197,50 +197,31 @@ const bloquantes = vueExemple.alertes.filter((a) => a.niveau === "crit");
 verifier(bloquantes.length === 1 && bloquantes[0].titre.startsWith("Snack : mise en service"), "une migration à appliquer devient une alerte bloquante");
 verifier(vueExemple.projets[0].ouverts.length === 2, "les deux tâches ouvertes sont reprises, la tâche faite non");
 
-// --- La vue de l'associé
-r = await worker.fetch(new Request("https://t.dev/investisseur"), env);
-verifier(r.status === 401 && (await r.text()).includes("/investisseur/connexion"), "vue associé : mot de passe demandé, sur son propre formulaire");
+// --- Une seule page : le mot de passe de l'associé ouvre la même adresse
+let fi = new FormData(); fi.set("mot_de_passe", "associe");
+r = await worker.fetch(new Request("https://t.dev/connexion", { method: "POST", body: fi }), env);
+const cookieAssocie = (r.headers.get("Set-Cookie") || "").split(";")[0];
+verifier(r.status === 303 && cookieAssocie.startsWith("kasbah_tdb=") && cookieAssocie !== cookie,
+  "le mot de passe de l'associé ouvre la même page, avec sa propre empreinte");
 
-let fi = new FormData(); fi.set("mot_de_passe", "sesame");
-r = await worker.fetch(new Request("https://t.dev/investisseur/connexion", { method: "POST", body: fi }), env);
-verifier(r.status === 401, "le mot de passe de l'équipe n'ouvre pas la vue associé");
-
-fi = new FormData(); fi.set("mot_de_passe", "associe");
-r = await worker.fetch(new Request("https://t.dev/investisseur/connexion", { method: "POST", body: fi }), env);
-const cookieInv = (r.headers.get("Set-Cookie") || "").split(";")[0];
-verifier(r.status === 303 && cookieInv.startsWith("kasbah_inv="), "vue associé : cookie posé");
-
-// ?rafraichir : la lecture gardée en mémoire est celle du test précédent, sans clés
-r = await worker.fetch(new Request("https://t.dev/investisseur?rafraichir=1", { headers: { Cookie: cookieInv } }), env);
-const inv = await r.text();
-verifier(r.status === 200 && inv.includes("Kasbah — pilotage"), "vue associé rendue");
-verifier(inv.includes("panini à 40 DH"), "le registre y est, avec l'effet en tête");
-verifier(inv.includes("Décision") && inv.includes("Incident"), "les faits sont classés par nature");
-verifier(inv.replace(/[  ]/g, " ").includes("110 000 DH"), "les chiffres y sont : l'associé voit tout");
-verifier(!inv.includes("creation-reservation") && !inv.includes("migration"), "aucun détail technique dans la vue associé");
-verifier(!inv.includes("Relire maintenant"), "pas de bouton de relecture : la vue est en lecture seule");
+r = await worker.fetch(new Request("https://t.dev/?rafraichir=1", { headers: { Cookie: cookieAssocie } }), env);
+const vueAssocie = await r.text();
+verifier(r.status === 200 && vueAssocie.includes("Tableau de bord Kasbah"), "page rendue pour l'associé");
+verifier(vueAssocie.replace(/[\u202f\u00a0]/g, " ").includes("110 000 DH"), "il voit les chiffres");
+verifier(vueAssocie.includes("panini à 40 DH"), "il voit le registre");
+verifier(vueAssocie.includes("Comment c'est construit") && vueAssocie.includes("<table>"), "il voit la partie technique");
+verifier(!vueAssocie.includes("creation-reservation"), "la mécanique interne (branches) lui est épargnée");
+verifier(vueAssocie.includes("Les tâches automatiques"), "il voit l'état des tâches de la nuit");
 
 r = await worker.fetch(new Request("https://t.dev/investisseur", { headers: { Cookie: cookie } }), env);
-verifier(r.status === 401, "le cookie de l'équipe n'ouvre pas la vue associé");
+verifier(r.status === 404, "plus de page séparée pour l'associé");
 
-// --- La vue technique
-r = await worker.fetch(new Request("https://t.dev/technique"), env);
-verifier(r.status === 401, "vue technique : fermée sans mot de passe");
-
-r = await worker.fetch(new Request("https://t.dev/technique?rafraichir=1", { headers: { Cookie: cookieInv } }), env);
-const tech = await r.text();
-verifier(r.status === 200 && tech.includes("<h1>Comment c'est construit</h1>"), "l'associé ouvre la vue technique, titrée une seule fois");
-verifier(tech.includes("<table>") && tech.includes("KasbahCalendar"), "le tableau du markdown est rendu");
-verifier(/<ol>[\s\S]*migrations s&#39;appliquent à la main/.test(tech), "la liste des fragilités est rendue");
-verifier(tech.includes("Ce qui a tourné cette nuit"), "les voyants de la nuit y sont");
-verifier(tech.includes("20260921200000_ventes_snack_export_parts"), "les dernières migrations y sont");
-verifier(!/<script|onerror=/i.test(tech), "le markdown ne peut pas injecter de script");
-
-r = await worker.fetch(new Request("https://t.dev/technique", { headers: { Cookie: cookie } }), env);
-verifier(r.status === 200, "l'équipe ouvre aussi la vue technique");
+const sommaire = (page.match(/class="sommaire"[\s\S]*?<\/nav>/) || [""])[0];
+verifier(/#chiffres/.test(sommaire) && /#technique/.test(sommaire) && /#depots/.test(sommaire),
+  "le sommaire mène à toutes les sections, la vue équipe comprise");
+verifier(!sommaire.includes("#depots") === false, "la section outils n'est que pour l'équipe");
 
 if (process.argv[2]) fs.writeFileSync(process.argv[2], page);
-if (process.argv[4]) fs.writeFileSync(process.argv[4], tech);
-if (process.argv[3]) fs.writeFileSync(process.argv[3], inv);
+if (process.argv[3]) fs.writeFileSync(process.argv[3], vueAssocie);
 console.log(echecs ? `\n${echecs} échec(s)` : "\nTout est bon.");
 process.exit(echecs ? 1 : 0);

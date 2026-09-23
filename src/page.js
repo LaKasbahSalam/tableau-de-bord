@@ -127,6 +127,16 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 .doc table{min-width:520px}
 .doc .tbl-scroll{margin:0 0 16px;border-radius:8px}
 .liens{display:flex;gap:10px;flex-wrap:wrap}
+.sommaire{display:flex;gap:6px;flex-wrap:wrap;margin:-18px 0 -12px}
+.sommaire a{font-family:var(--mono);font-size:12px;text-decoration:none;color:var(--ink-2);border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 11px}
+.sommaire a:hover{border-color:var(--accent);color:var(--accent)}
+.doc-repli{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:0}
+.doc-repli + .doc-repli{margin-top:12px}
+.doc-repli summary{cursor:pointer;padding:15px 18px;font-weight:600;font-family:var(--display)}
+.doc-repli summary:hover{color:var(--accent)}
+.doc-repli[open] summary{border-bottom:1px solid var(--line)}
+.doc-repli .doc{border:0;padding:18px 20px 6px}
+.doc-repli .tbl-scroll{border:0;border-radius:0}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px}
 .chart svg{width:100%;height:auto;display:block}
 .chart text{font-family:var(--mono);font-size:11px;fill:var(--ink-3)}
@@ -295,114 +305,7 @@ function faitsHtml(faits, limite = 40) {
     </div></li>`).join("")}</ol>`;
 }
 
-export function pageTableau(v, lu) {
-  const l = local(lu);
-  const heure = `${String(l.h).padStart(2, "0")}h${String(l.m).padStart(2, "0")}`;
-  const src = (nom, ok) => `<span class="pill p-${ok ? "ok" : "idle"}">${nom}${ok ? "" : " · non lu"}</span>`;
-  return `${tete("Tableau de bord Kasbah")}<div class="wrap">
-<header class="top">
-  <div>
-    <div class="eyebrow">La Kasbah Salam · Fès</div>
-    <h1>Tableau de bord Kasbah</h1>
-    <p>Tous les outils qui font tourner l'hôtel, sur une seule page : ce qui demande une action, les tâches automatiques, et où en est chaque projet.</p>
-    <div class="srcs">${src("GitHub", v.etat.github)}${src("Registre", v.etat.registre)}${src("Supabase", v.etat.supabase)}</div>
-  </div>
-  <div class="stamp">
-    <div><span class="eyebrow">Lu le ${jourFr(l.jour)} à</span><b>${heure}</b></div>
-    <div><span class="eyebrow">Bloquant</span><b class="c">${v.compteurs.crit}</b></div>
-    <div><span class="eyebrow">À voir</span><b class="w">${v.compteurs.warn}</b></div>
-    <a class="btn" href="/?rafraichir=1">Relire maintenant</a>
-  </div>
-</header>
-
-${chiffresHtml(v.chiffres)}
-
-<section aria-labelledby="h-att">
-  <div class="section-head"><h2 id="h-att">Ce qui demande une action</h2><p>Classé par gravité · qui est concerné, à droite</p></div>
-  ${alertesHtml(v.alertes)}
-</section>
-
-<section aria-labelledby="h-flow">
-  <div class="section-head"><h2 id="h-flow">Les tâches automatiques</h2><p>Heure du Maroc · les rappels se lisent dans la copie de 23h30, donc avec un jour de décalage</p></div>
-  ${fluxHtml(v.flux)}
-</section>
-
-<section aria-labelledby="h-proj">
-  <div class="section-head"><h2 id="h-proj">Les projets</h2><p>Lu sur GitHub : seul ce qui a été envoyé apparaît ici</p></div>
-  ${v.projets.length ? `<div class="grid">${v.projets.map(projetHtml).join("")}</div>` : `<div class="panne">GitHub n'est pas lu : les fiches projet apparaîtront une fois la clé ajoutée.</div>`}
-</section>
-
-${occupationHtml(v.occupation)}
-
-<section aria-labelledby="h-notion">
-  <div class="section-head"><h2 id="h-notion">Les projets ouverts</h2><p>Registre : <span class="mono">pilotage/projets.md</span> du dépôt Kasbah-Analytique</p></div>
-  ${projetsHtml(v.projets_ouverts)}
-</section>
-
-<footer><p>Lu en direct dans GitHub, Notion et Kasbah Analytics, en lecture seule. Les lectures sont gardées 3 minutes.</p><a class="btn" href="/deconnexion">Se déconnecter</a></footer>
-</div></body></html>`;
-}
-
-
-/**
- * La vue de l'associé à distance : les chiffres, ce qui s'est fait, les
- * projets, les points de vigilance. Pas de branche, pas de migration —
- * rien qu'il ne puisse lire sans être dans le code.
- */
-export function pageInvestisseur(v, lu) {
-  const l = local(lu);
-  const heure = `${String(l.h).padStart(2, "0")}h${String(l.m).padStart(2, "0")}`;
-  const vigilance = v.alertes.filter((a) => a.niveau !== "info" && !a.technique);
-  const domaines = Object.entries(v.faits_par_domaine || {}).sort((a, b) => b[1] - a[1]);
-  return `${tete("Kasbah — pilotage")}<div class="wrap">
-<header class="top">
-  <div>
-    <div class="eyebrow">La Kasbah Salam · Fès</div>
-    <h1>Kasbah — pilotage</h1>
-    <p>Où en est l'hôtel : les chiffres de l'exercice et du mois, ce qui a été fait, décidé ou cassé, et les projets en cours. Lu en direct, rien n'est saisi à la main.</p>
-  </div>
-  <div class="stamp">
-    <div><span class="eyebrow">Lu le ${jourFr(l.jour)} à</span><b>${heure}</b></div>
-  </div>
-</header>
-
-${chiffresHtml(v.chiffres)}
-
-${occupationHtml(v.occupation)}
-
-<section aria-labelledby="h-faits">
-  <div class="section-head"><h2 id="h-faits">Ce qui s'est fait</h2>
-    <p>Chaque fait est classé par domaine et par nature · l'effet est en tête</p></div>
-  ${domaines.length ? `<div class="dom">${domaines.map(([d, n]) => `<span><b>${n}</b> ${esc(d.toLowerCase())}</span>`).join("")}<span>sur 30 jours</span></div>` : ""}
-  ${faitsHtml(v.faits)}
-</section>
-
-<section aria-labelledby="h-vig">
-  <div class="section-head"><h2 id="h-vig">Points de vigilance</h2><p>Ce qui reste ouvert aujourd'hui</p></div>
-  ${vigilance.length ? `<ul class="alerts">${vigilance.map((a) => `<li>
-    <span class="pill p-${a.niveau}">${PASTILLE[a.niveau]}</span>
-    <div class="what"><b>${md(a.titre)}</b>${a.detail ? `<p>${md(a.detail)}</p>` : ""}</div>
-    <span class="who">${esc(a.qui)}</span></li>`).join("")}</ul>`
-    : `<div class="alerts"><div class="vide">Rien d'ouvert aujourd'hui.</div></div>`}
-</section>
-
-<section aria-labelledby="h-proj-inv">
-  <div class="section-head"><h2 id="h-proj-inv">Les projets</h2><p>Hors terminés</p></div>
-  ${projetsHtml(v.projets_ouverts)}
-</section>
-
-<footer><p>Chiffres : compte de résultat du classeur de trésorerie et réservations Beds24, recopiés chaque nuit. Registre tenu au fil des séances de travail.</p><a class="btn" href="/deconnexion">Se déconnecter</a></footer>
-</div></body></html>`;
-}
-
-
-/**
- * « Comment c'est construit » : le texte de `pilotage/technique.md`, suivi
- * de ce qui est vivant — les tâches automatiques de la nuit et les
- * migrations récentes. Lisible par un associé qui lit l'informatique, sans
- * une ligne de code.
- */
-/** Le fichier commence par son propre titre : la page l'affiche déjà. */
+/** Le fichier technique commence par son propre titre : la section l'a déjà. */
 const sansPremierTitre = (md) => {
   const texte = String(md || "");
   if (!texte.startsWith("# ")) return texte;
@@ -410,40 +313,86 @@ const sansPremierTitre = (md) => {
   return saut === -1 ? "" : texte.slice(saut + 1);
 };
 
-export function pageTechnique(v, lu, vueAssocie) {
+export function pageTableau(v, lu, associe = false) {
   const l = local(lu);
   const heure = `${String(l.h).padStart(2, "0")}h${String(l.m).padStart(2, "0")}`;
-  const depots = (v.projets_depots || []).filter((d) => d.migrations_recentes && d.migrations_recentes.length);
-  return `${tete("Kasbah — comment c'est construit")}<div class="wrap">
+  const src = (nom, ok) => `<span class="pill p-${ok ? "ok" : "idle"}">${nom}${ok ? "" : " \u00b7 non lu"}</span>`;
+  const domaines = Object.entries(v.faits_par_domaine || {}).sort((a, b) => b[1] - a[1]);
+  // L'associé voit les mêmes chiffres et le même registre ; ce qu'on lui
+  // épargne, ce sont les alertes de mécanique interne (branches, migrations).
+  const alertes = associe ? v.alertes.filter((a) => !a.technique) : v.alertes;
+
+  const sommaire = [
+    ["chiffres", "Les chiffres"],
+    ["action", "\u00c0 faire"],
+    ["faits", "Ce qui s'est fait"],
+    ["nuit", "Les t\u00e2ches automatiques"],
+    ["projets", "Les projets"],
+    ...(associe ? [] : [["depots", "Les outils"]]),
+    ["technique", "Comment c'est construit"],
+  ];
+
+  return `${tete("Tableau de bord Kasbah")}<div class="wrap">
 <header class="top">
   <div>
-    <div class="eyebrow">La Kasbah Salam · Fès</div>
-    <h1>Comment c'est construit</h1>
-    <p>Ce qui tourne, où, avec quoi, et ce qui est fragile. Les noms des composants sont donnés pour que les questions puissent être précises.</p>
-    <div class="liens"><a class="btn" href="${vueAssocie ? "/investisseur" : "/"}">${vueAssocie ? "← Retour au pilotage" : "← Retour au tableau de bord"}</a></div>
+    <div class="eyebrow">La Kasbah Salam \u00b7 F\u00e8s</div>
+    <h1>Tableau de bord Kasbah</h1>
+    <p>O\u00f9 en est l'h\u00f4tel, en une page : les chiffres, ce qui demande une action, ce qui a \u00e9t\u00e9 fait ou d\u00e9cid\u00e9, et comment tout \u00e7a est construit. Lu en direct, rien n'est saisi \u00e0 la main.</p>
+    <div class="srcs">${src("GitHub", v.etat.github)}${src("Registre", v.etat.registre)}${src("Supabase", v.etat.supabase)}</div>
   </div>
-  <div class="stamp"><div><span class="eyebrow">Lu le ${jourFr(l.jour)} à</span><b>${heure}</b></div></div>
+  <div class="stamp">
+    <div><span class="eyebrow">Lu le ${jourFr(l.jour)} \u00e0</span><b>${heure}</b></div>
+    <div><span class="eyebrow">Bloquant</span><b class="c">${alertes.filter((a) => a.niveau === "crit").length}</b></div>
+    <div><span class="eyebrow">\u00c0 voir</span><b class="w">${alertes.filter((a) => a.niveau === "warn").length}</b></div>
+    <a class="btn" href="/?rafraichir=1">Relire maintenant</a>
+  </div>
 </header>
 
-<section aria-labelledby="h-doc">
-  <div class="section-head"><h2 id="h-doc">L'architecture</h2><p>Tenue à jour dans <span class="mono">pilotage/technique.md</span></p></div>
-  ${v.technique ? `<article class="doc">${rendreMarkdown(sansPremierTitre(v.technique))}</article>`
-    : `<div class="panne">La page technique n'est pas encore écrite (fichier <span class="mono">pilotage/technique.md</span>).</div>`}
+<nav class="sommaire" aria-label="Sommaire">${sommaire.map(([id, nom]) => `<a href="#${id}">${nom}</a>`).join("")}</nav>
+
+<section id="chiffres" aria-labelledby="h-chiffres">
+  ${chiffresHtml(v.chiffres)}
 </section>
 
-<section aria-labelledby="h-flux-tech">
-  <div class="section-head"><h2 id="h-flux-tech">Ce qui a tourné cette nuit</h2><p>Heure du Maroc · l'état vient de <span class="mono">analytique.fraicheur</span> et de la copie des rappels</p></div>
+<section id="action" aria-labelledby="h-att">
+  <div class="section-head"><h2 id="h-att">Ce qui demande une action</h2><p>Class\u00e9 par gravit\u00e9 \u00b7 qui est concern\u00e9, \u00e0 droite</p></div>
+  ${alertesHtml(alertes)}
+</section>
+
+<section id="faits" aria-labelledby="h-faits">
+  <div class="section-head"><h2 id="h-faits">Ce qui s'est fait</h2><p>Registre tenu \u00e0 chaque s\u00e9ance \u00b7 l'effet est en t\u00eate de chaque fait</p></div>
+  ${domaines.length ? `<div class="dom">${domaines.map(([d, n]) => `<span><b>${n}</b> ${esc(d.toLowerCase())}</span>`).join("")}<span>sur 30 jours</span></div>` : ""}
+  ${faitsHtml(v.faits, 12)}
+</section>
+
+<section id="nuit" aria-labelledby="h-flow">
+  <div class="section-head"><h2 id="h-flow">Les t\u00e2ches automatiques</h2><p>Heure du Maroc \u00b7 les rappels se lisent dans la copie de 23h30, donc avec un jour de d\u00e9calage</p></div>
   ${fluxHtml(v.flux)}
 </section>
 
-${depots.length ? `<section aria-labelledby="h-mig">
-  <div class="section-head"><h2 id="h-mig">Dernières migrations écrites</h2><p>Écrites dans les dépôts · appliquées à la main dans Supabase</p></div>
-  <div class="tbl-scroll"><table>
-    <thead><tr><th>Dépôt</th><th>Migration</th></tr></thead>
-    <tbody>${depots.flatMap((d) => d.migrations_recentes.map((m) => `<tr><td>${esc(d.nom)}</td><td class="mono">${esc(m.replace(/\.sql$/, ""))}</td></tr>`)).join("")}</tbody>
-  </table></div>
-</section>` : ""}
+<section id="projets" aria-labelledby="h-proj-ouverts">
+  <div class="section-head"><h2 id="h-proj-ouverts">Les projets</h2><p>Hors termin\u00e9s \u00b7 <span class="mono">pilotage/projets.md</span></p></div>
+  ${projetsHtml(v.projets_ouverts)}
+</section>
 
-<footer><p>Cette page décrit l'état réel du système, pas une cible. Ce qui est signalé comme fragile l'est vraiment : les remarques sont les bienvenues.</p></footer>
+${associe ? "" : `<section id="depots" aria-labelledby="h-proj">
+  <div class="section-head"><h2 id="h-proj">Les outils</h2><p>Lu sur GitHub : seul ce qui a \u00e9t\u00e9 envoy\u00e9 appara\u00eet ici</p></div>
+  ${v.projets_depots && v.projets_depots.length ? `<div class="grid">${v.projets_depots.map(projetHtml).join("")}</div>`
+    : `<div class="panne">GitHub n'est pas lu : les fiches appara\u00eetront une fois la cl\u00e9 ajout\u00e9e.</div>`}
+</section>`}
+
+${occupationHtml(v.occupation)}
+
+<section id="technique" aria-labelledby="h-doc">
+  <div class="section-head"><h2 id="h-doc">Comment c'est construit</h2><p>Sans code \u00b7 tenu dans <span class="mono">pilotage/technique.md</span></p></div>
+  ${v.technique ? `<details class="doc-repli"><summary>Architecture, fonctions, secrets, et ce qui est fragile</summary>
+    <article class="doc">${rendreMarkdown(sansPremierTitre(v.technique))}</article></details>`
+    : `<div class="panne">La page technique n'est pas encore \u00e9crite (<span class="mono">pilotage/technique.md</span>).</div>`}
+  ${v.migrations_recentes && v.migrations_recentes.length ? `<details class="doc-repli"><summary>Derni\u00e8res migrations \u00e9crites (appliqu\u00e9es \u00e0 la main dans Supabase)</summary>
+    <div class="tbl-scroll"><table><thead><tr><th>D\u00e9p\u00f4t</th><th>Migration</th></tr></thead><tbody>${
+      v.migrations_recentes.map((m) => `<tr><td>${esc(m.depot)}</td><td class="mono">${esc(m.nom)}</td></tr>`).join("")}</tbody></table></div></details>` : ""}
+</section>
+
+<footer><p>Chiffres : compte de r\u00e9sultat du classeur de tr\u00e9sorerie et r\u00e9servations Beds24, recopi\u00e9s chaque nuit. Registre et projets : tenus \u00e0 chaque s\u00e9ance de travail. Les lectures sont gard\u00e9es 3 minutes.</p><a class="btn" href="/deconnexion">Se d\u00e9connecter</a></footer>
 </div></body></html>`;
 }

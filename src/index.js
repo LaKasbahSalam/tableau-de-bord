@@ -13,10 +13,9 @@
  */
 import { lireTout } from "./sources.js";
 import { analyser } from "./analyse.js";
-import { pageTableau, pageInvestisseur, pageTechnique, pageConnexion } from "./page.js";
+import { pageTableau, pageConnexion } from "./page.js";
 
 const COOKIE = "kasbah_tdb";
-const COOKIE_INV = "kasbah_inv";
 const DUREE_CACHE_MS = 3 * 60 * 1000;
 let cache = null; // { quand, donnees }
 
@@ -36,64 +35,25 @@ export default {
     const env = { ...PAR_DEFAUT, ...propre };
     const url = new URL(requete.url);
 
-    // Vue de l'associé : son propre lien, son propre mot de passe, en
-    // lecture seule. Elle ne montre ni branche ni migration.
-    if (url.pathname.startsWith("/investisseur")) {
-      if (!env.MOT_DE_PASSE_INVESTISSEUR) {
-        return html(pageConnexion({ titre: "Kasbah — pilotage", erreur: "Cette page n'a pas encore de mot de passe : ajoute le secret MOT_DE_PASSE_INVESTISSEUR dans Cloudflare.", bloque: true }), 503);
-      }
-      const jetonInv = await empreinte(env.MOT_DE_PASSE_INVESTISSEUR);
-      if (url.pathname === "/investisseur/connexion" && requete.method === "POST") {
-        const form = await requete.formData();
-        if ((await empreinte(String(form.get("mot_de_passe") || ""))) !== jetonInv) {
-          return html(pageConnexion({ titre: "Kasbah — pilotage", action: "/investisseur/connexion", erreur: "Mot de passe incorrect." }), 401);
-        }
-        return new Response(null, {
-          status: 303,
-          headers: {
-            Location: "/investisseur",
-            "Set-Cookie": `${COOKIE_INV}=${jetonInv}; Path=/investisseur; HttpOnly; Secure; SameSite=Lax; Max-Age=${60 * 60 * 24 * 60}`,
-          },
-        });
-      }
-      if (lireCookie(requete, COOKIE_INV) !== jetonInv) {
-        return html(pageConnexion({ titre: "Kasbah — pilotage", action: "/investisseur/connexion" }), 401);
-      }
-      const donnees = await lues(env, url.searchParams.has("rafraichir"));
-      return html(pageInvestisseur(analyser(donnees, new Date()), new Date(cache.quand)));
-    }
-
-    // La vue technique : ouverte à l'équipe comme à l'associé, qui lit
-    // l'informatique et peut relever ce qui cloche.
-    if (url.pathname === "/technique") {
-      const jetons = await Promise.all([
-        env.MOT_DE_PASSE ? empreinte(env.MOT_DE_PASSE) : null,
-        env.MOT_DE_PASSE_INVESTISSEUR ? empreinte(env.MOT_DE_PASSE_INVESTISSEUR) : null,
-      ]);
-      const equipe = jetons[0] && lireCookie(requete, COOKIE) === jetons[0];
-      const associe = jetons[1] && lireCookie(requete, COOKIE_INV) === jetons[1];
-      if (!equipe && !associe) {
-        return html(pageConnexion({ titre: "Kasbah — comment c'est construit", action: "/investisseur/connexion" }), 401);
-      }
-      const donnees = await lues(env, url.searchParams.has("rafraichir"));
-      return html(pageTechnique(analyser(donnees, new Date()), new Date(cache.quand), associe && !equipe));
-    }
-
     if (!env.MOT_DE_PASSE) {
       return html(pageConnexion({ erreur: "La page n'a pas encore de mot de passe : ajoute le secret MOT_DE_PASSE dans Cloudflare.", bloque: true }), 503);
     }
+    // Deux mots de passe, une seule page : celui de l'équipe et celui de
+    // l'associé. Deux, pour pouvoir couper l'un sans l'autre.
     const jeton = await empreinte(env.MOT_DE_PASSE);
+    const jetonAssocie = env.MOT_DE_PASSE_INVESTISSEUR ? await empreinte(env.MOT_DE_PASSE_INVESTISSEUR) : null;
 
     if (url.pathname === "/connexion" && requete.method === "POST") {
       const form = await requete.formData();
-      if ((await empreinte(String(form.get("mot_de_passe") || ""))) !== jeton) {
+      const donne = await empreinte(String(form.get("mot_de_passe") || ""));
+      if (donne !== jeton && donne !== jetonAssocie) {
         return html(pageConnexion({ erreur: "Mot de passe incorrect." }), 401);
       }
       return new Response(null, {
         status: 303,
         headers: {
           Location: "/",
-          "Set-Cookie": `${COOKIE}=${jeton}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${60 * 60 * 24 * 60}`,
+          "Set-Cookie": `${COOKIE}=${donne}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${60 * 60 * 24 * 60}`,
         },
       });
     }
@@ -101,22 +61,20 @@ export default {
     if (url.pathname === "/deconnexion") {
       return new Response(null, {
         status: 303,
-        headers: [
-          ["Location", "/"],
-          ["Set-Cookie", `${COOKIE}=; Path=/; Max-Age=0`],
-          ["Set-Cookie", `${COOKIE_INV}=; Path=/investisseur; Max-Age=0`],
-        ],
+        headers: { Location: "/", "Set-Cookie": `${COOKIE}=; Path=/; Max-Age=0` },
       });
     }
 
-    if (lireCookie(requete, COOKIE) !== jeton) {
+    const cookie = lireCookie(requete, COOKIE);
+    const associe = jetonAssocie && cookie === jetonAssocie;
+    if (cookie !== jeton && !associe) {
       return html(pageConnexion({}), 401);
     }
 
     if (url.pathname !== "/") return new Response("Introuvable", { status: 404 });
 
     const donnees = await lues(env, url.searchParams.has("rafraichir"));
-    return html(pageTableau(analyser(donnees, new Date()), new Date(cache.quand)));
+    return html(pageTableau(analyser(donnees, new Date()), new Date(cache.quand), associe));
   },
 };
 
