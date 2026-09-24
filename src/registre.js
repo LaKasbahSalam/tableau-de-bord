@@ -103,6 +103,21 @@ export function lireFaits(fichiers) {
 }
 
 /**
+ * Le bloc d'un fait, rattaché à un autre projet : seule la quatrième
+ * position du titre change (« — » quand il n'y a plus de projet).
+ */
+export function faitAvecProjet(brut, projet) {
+  const lignes = String(brut || "").split(/\r?\n/);
+  const m = lignes[0].match(/^(###\s+)(.+)$/);
+  if (!m) throw new Error("Ce bloc n'est pas un fait.");
+  const parts = m[2].split("·").map((x) => x.trim());
+  while (parts.length < 4) parts.push("—");
+  parts[3] = String(projet || "").trim() || "—";
+  lignes[0] = m[1] + parts.join(" · ");
+  return lignes.join("\n");
+}
+
+/**
  * Remplace un bloc dans un fichier, ou le retire quand `nouveau` est vide.
  * `titreAttendu` est le garde-fou : si le fichier a bougé entre l'affichage
  * et l'enregistrement, on refuse plutôt que d'écraser le mauvais bloc.

@@ -112,6 +112,11 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 .faits .quand span{font-size:11.5px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3)}
 .faits .etiq{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
 .faits .proj{font-size:12px;color:var(--ink-3);font-family:var(--mono)}
+.choix-projet{margin:0;display:inline}
+.choix-projet select{font-family:var(--mono);font-size:12px;color:var(--ink-2);background:transparent;border:1px dotted var(--line);border-radius:6px;padding:2px 6px;max-width:100%;cursor:pointer}
+.choix-projet select:hover,.choix-projet select:focus-visible{border-color:var(--accent);color:var(--accent);outline:none}
+.choix-projet select.sans{color:var(--ink-3);font-style:italic}
+.role{margin-bottom:8px}
 .faits p{margin:0;font-size:14px;color:var(--ink-2)}
 .faits .effet{color:var(--ink);font-weight:500;margin-bottom:4px}
 @media (max-width:640px){.faits li{grid-template-columns:1fr}}
@@ -200,7 +205,7 @@ const tete = (titre) => `<!doctype html><html lang="fr"><head><meta charset="utf
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>${CSS}</style></head><body>`;
 
-export function pageConnexion({ erreur, bloque, titre = "Tableau de bord Kasbah", action = "/connexion" }) {
+export function pageConnexion({ erreur, bloque, titre = "Tableau de bord Kasbah", action = "/connexion", retour }) {
   return `${tete(titre)}<div class="login">
 <form method="post" action="${esc(action)}">
   <div class="eyebrow">La Kasbah Salam · Fès</div>
@@ -209,6 +214,7 @@ export function pageConnexion({ erreur, bloque, titre = "Tableau de bord Kasbah"
   ${bloque ? "" : `<label for="mdp" class="eyebrow">Mot de passe</label>
   <input id="mdp" name="mot_de_passe" type="password" autocomplete="current-password" required autofocus>
   <button type="submit">Ouvrir</button>`}
+  ${retour ? `<a class="btn" href="${esc(retour)}">← Retour au tableau de bord</a>` : ""}
 </form></div></body></html>`;
 }
 
@@ -380,12 +386,31 @@ function projetsHtml(p, peutEditer = false) {
 }
 
 /** Le registre : ce qui a été fait, classé. */
-function faitsHtml(faits, limite = 40, peutEditer = false) {
+/**
+ * Le projet d'un fait : un menu déroulant pour l'équipe (le choix part tout
+ * de suite, un commit), une simple étiquette pour l'associé.
+ */
+function projetDuFait(f, projets, peutEditer) {
+  if (!peutEditer) return f.projet ? `<span class="proj">${esc(f.projet)}</span>` : "";
+  // Un projet retiré de la liste reste affiché tel quel, pour ne rien changer sans le vouloir.
+  const hors = f.projet && !projets.includes(f.projet);
+  const options = [
+    `<option value=""${f.projet ? "" : " selected"}>— aucun projet —</option>`,
+    ...(hors ? [`<option value="${esc(f.projet)}" selected>${esc(f.projet)} (plus dans la liste)</option>`] : []),
+    ...projets.map((p) => `<option value="${esc(p)}"${p === f.projet ? " selected" : ""}>${esc(p)}</option>`),
+  ].join("");
+  return `<form class="choix-projet" method="post" action="/projet-du-fait">
+    <input type="hidden" name="f" value="${esc(f.fichier)}"><input type="hidden" name="i" value="${f.index}"><input type="hidden" name="titre" value="${esc(f.titre)}">
+    <select name="projet" class="${f.projet ? "" : "sans"}" aria-label="Projet de ce fait" title="Changer le projet de ce fait" onchange="this.form.submit()">${options}</select>
+  </form>`;
+}
+
+function faitsHtml(faits, limite = 40, peutEditer = false, projets = []) {
   if (!faits || !faits.length) return `<div class="panne">Rien d'enregistré pour l'instant.</div>`;
   return `<ol class="faits">${faits.slice(0, limite).map((f) => `<li>
     <div class="quand"><b>${esc(f.date_fr)}</b><span>${esc(f.domaine)}</span></div>
     <div class="quoi">
-      <div class="etiq"><span class="pill p-${f.nature === "Incident" || f.nature === "Risque" ? "warn" : f.nature === "Décision" ? "info" : "ok"}">${esc(f.nature)}</span>${f.projet ? `<span class="proj">${esc(f.projet)}</span>` : ""}</div>
+      <div class="etiq"><span class="pill p-${f.nature === "Incident" || f.nature === "Risque" ? "warn" : f.nature === "Décision" ? "info" : "ok"}">${esc(f.nature)}</span>${projetDuFait(f, projets, peutEditer)}</div>
       ${f.effet ? `<p class="effet">${md(f.effet)}</p>` : ""}
       <p>${md(f.texte)}</p>
       ${peutEditer ? `<a class="editer" href="/modifier?f=${encodeURIComponent(f.fichier)}&i=${f.index}">Modifier</a>` : ""}
@@ -423,6 +448,7 @@ export function pageTableau(v, lu, associe = false) {
   return `${tete("Tableau de bord Kasbah")}<div class="wrap">
 <header class="top">
   <div>
+    <div class="role">${associe ? `<span class="pill p-warn">Connecté : investisseur</span>` : `<span class="pill p-info">Connecté : admin</span>`}</div>
     <div class="eyebrow">La Kasbah Salam \u00b7 F\u00e8s</div>
     <h1>Tableau de bord Kasbah</h1>
     <p>O\u00f9 en est l'h\u00f4tel, en une page : les chiffres, ce qui demande une action, ce qui a \u00e9t\u00e9 fait ou d\u00e9cid\u00e9, et comment tout \u00e7a est construit. Lu en direct, rien n'est saisi \u00e0 la main.</p>
@@ -455,7 +481,7 @@ export function pageTableau(v, lu, associe = false) {
 <section id="faits" aria-labelledby="h-faits">
   <div class="section-head"><h2 id="h-faits">Ce qui s'est fait</h2><p>Registre tenu \u00e0 chaque s\u00e9ance \u00b7 l'effet est en t\u00eate de chaque fait</p></div>
   ${domaines.length ? `<div class="dom">${domaines.map(([d, n]) => `<span><b>${n}</b> ${esc(d.toLowerCase())}</span>`).join("")}<span>sur 30 jours</span></div>` : ""}
-  ${faitsHtml(v.faits, 12, !associe)}
+  ${faitsHtml(v.faits, 12, !associe, v.noms_projets || [])}
 </section>
 
 <section id="nuit" aria-labelledby="h-flow">

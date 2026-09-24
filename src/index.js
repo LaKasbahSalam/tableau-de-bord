@@ -18,7 +18,7 @@ import {
 } from "./sources.js";
 import { analyser } from "./analyse.js";
 import { pageTableau, pageEdition, pageDocuments, pageConnexion } from "./page.js";
-import { lireProjets, lireFaits, lirePrevisions, remplacerBloc, slugProjet } from "./registre.js";
+import { lireProjets, lireFaits, lirePrevisions, remplacerBloc, slugProjet, faitAvecProjet } from "./registre.js";
 
 const COOKIE = "kasbah_tdb";
 const DUREE_CACHE_MS = 3 * 60 * 1000;
@@ -80,6 +80,12 @@ export default {
     if (url.pathname === "/modifier") {
       if (associe) return new Response("Réservé à l'équipe", { status: 403 });
       return modifier(requete, env, url);
+    }
+
+    // Rattacher un fait à un autre projet (menu déroulant) : réservé à l'équipe.
+    if (url.pathname === "/projet-du-fait") {
+      if (associe) return new Response("Réservé à l'équipe", { status: 403 });
+      return changerProjetDuFait(requete, env);
     }
 
     // Ajouter ou retirer un document d'un projet : réservé à l'équipe.
@@ -157,6 +163,39 @@ async function modifier(requete, env, url) {
   } catch (e) {
     const secours = { titre, brut: texte };
     return rendre({ fichier, index, bloc: secours, erreur: String(e.message || e), quoi: quoiDe(fichier) }, 409);
+  }
+}
+
+/**
+ * Change le projet d'un fait, choisi dans le menu déroulant du registre.
+ * Seul le quatrième champ du titre bouge ; un commit par changement.
+ */
+async function changerProjetDuFait(requete, env) {
+  if (requete.method !== "POST") return new Response("Méthode refusée", { status: 405 });
+  const form = await requete.formData();
+  const fichier = String(form.get("f") || "");
+  const index = String(form.get("i") || "0");
+  const titre = String(form.get("titre") || "");
+  const projet = String(form.get("projet") || "").trim();
+  if (!/^\d{4}-\d{2}\.md$/.test(fichier)) return new Response("Fichier refusé", { status: 400 });
+
+  try {
+    const { contenu, sha } = await lireFichierRegistre(env, fichier);
+    const bloc = blocDe(contenu, fichier, index);
+    if (!bloc) throw new Error("Ce fait n'existe plus : recharge la page.");
+    // Un projet de la liste, ou celui que le fait porte déjà (même s'il a quitté la liste).
+    if (projet && projet !== bloc.projet) {
+      const { contenu: md } = await lireFichierRegistre(env, "projets.md");
+      if (!lireProjets(md).some((p) => p.nom === projet)) throw new Error(`Le projet « ${projet} » n'est pas dans la liste des projets.`);
+    }
+    if (projet === bloc.projet) return new Response(null, { status: 303, headers: { Location: "/#faits" } });
+    const nouveauContenu = remplacerBloc(contenu, { debut: bloc.debut, fin: bloc.fin, titreAttendu: titre }, faitAvecProjet(bloc.brut, projet));
+    await ecrireFichierRegistre(env, fichier, nouveauContenu, sha,
+      `Rattache un fait ${projet ? `au projet « ${projet} »` : "à aucun projet"} (depuis le tableau de bord)`);
+    cache = null;
+    return new Response(null, { status: 303, headers: { Location: "/#faits" } });
+  } catch (e) {
+    return html(pageConnexion({ titre: "Projet non changé", erreur: `${e.message || e} — rien n'a été écrit.`, bloque: true, retour: "/#faits" }), 409);
   }
 }
 

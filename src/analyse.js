@@ -322,6 +322,8 @@ export function analyser({ github, registre, supabase }, maintenant) {
     flux,
     projets,
     projets_ouverts: vueProjets,
+    // Tous les projets, terminés compris, pour le menu « projet » de chaque fait.
+    noms_projets: registre.ok ? lireProjets(registre.donnees.projets).map((p) => p.nom) : [],
     technique: registre.ok ? registre.donnees.technique : "",
     faits,
     faits_par_domaine: parDomaine(faits, ici.jour, 30),

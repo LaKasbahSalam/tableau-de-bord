@@ -225,7 +225,7 @@ verifier(page.includes("creation-reservation"), "branche en attente signalée");
 verifier(page.includes("déjà fusionnée"), "branche fusionnée repérée");
 verifier(page.includes("tresorerie") && page.includes("introuvable"), "dépôt absent : message clair");
 verifier(page.includes("snack_ventes"), "table inconnue signalée");
-verifier(!page.includes("Site internet"), "projets terminés masqués");
+verifier(!(page.match(/<section id="projets"[\s\S]*?<\/section>/) || [""])[0].includes("Site internet"), "projets terminés masqués");
 verifier(page.includes("Maintenance d&#39;été") && /dans \d+ j/.test(page), "échéance proche signalée");
 verifier(!/<script/i.test(page), "aucun script dans la page");
 
@@ -326,6 +326,40 @@ r = await worker.fetch(new Request("https://t.dev/modifier?f=2026-09.md&i=0", { 
 verifier(r.status === 403, "l'associé ne peut pas modifier le registre");
 verifier(!vueAssocie.includes("/modifier"), "et n'en voit même pas les liens");
 verifier(page.includes("/modifier"), "l'équipe, elle, a un lien Modifier sur chaque bloc");
+
+// --- Qui est connecté, en haut à gauche
+verifier(page.includes("Connecté : admin") && !page.includes("Connecté : investisseur"), "l'équipe se voit connectée en admin");
+verifier(vueAssocie.includes("Connecté : investisseur") && !vueAssocie.includes("Connecté : admin"), "l'associé se voit connecté en investisseur");
+
+// --- Le projet d'un fait, choisi dans un menu déroulant
+verifier(page.includes('action="/projet-du-fait"') && page.includes('<option value="Tableau de bord Kasbah">'), "l'équipe a un menu des projets sur chaque fait");
+verifier(page.includes('<option value="Site internet">'), "les projets terminés sont proposés aussi");
+verifier(page.includes('value="Snack" selected>Snack (plus dans la liste)'), "un projet absent de la liste reste affiché, sans être changé");
+verifier(!vueAssocie.includes("/projet-du-fait") && vueAssocie.includes('<span class="proj">Snack</span>'), "l'associé voit le projet, sans menu");
+
+const rattacher = (projet, cle = cookie, titre = faitsTitre()) => {
+  const fp = new FormData();
+  fp.set("f", "2026-09.md"); fp.set("i", "0"); fp.set("titre", titre); fp.set("projet", projet);
+  return worker.fetch(new Request("https://t.dev/projet-du-fait", { method: "POST", body: fp, headers: { Cookie: cle } }), env);
+};
+let avant = ecrits.length;
+r = await rattacher("Tableau de bord Kasbah");
+let ecritProjet = ecrits[ecrits.length - 1];
+verifier(r.status === 303 && ecrits.length === avant + 1, "choisir un projet écrit un commit et renvoie au registre");
+verifier(ecritProjet.contenu.includes(`${faitsTitre().replace(/· Snack$/, "· Tableau de bord Kasbah")}\n`), "seul le projet change dans le titre du fait");
+verifier(ecritProjet.contenu.includes("panini à 40 DH") && ecritProjet.contenu.includes("Outils · Incident · Snack"), "le reste du fichier est intact");
+verifier(/au projet « Tableau de bord Kasbah »/.test(ecritProjet.message), "le commit dit à quel projet le fait est rattaché");
+
+r = await rattacher("");
+verifier(r.status === 303 && ecrits[ecrits.length - 1].contenu.includes(faitsTitre().replace(/· Snack$/, "· —")), "« aucun projet » écrit un tiret");
+
+avant = ecrits.length;
+r = await rattacher("Projet inventé");
+verifier(r.status === 409 && ecrits.length === avant && (await r.text()).includes("pas dans la liste"), "un projet hors de la liste est refusé");
+r = await rattacher("Tableau de bord Kasbah", cookie, "un titre qui a bougé");
+verifier(r.status === 409 && ecrits.length === avant, "un fait qui a bougé n'est pas écrasé");
+r = await rattacher("Tableau de bord Kasbah", cookieAssocie);
+verifier(r.status === 403 && ecrits.length === avant, "l'associé ne peut pas changer le projet d'un fait");
 
 // --- Le tableau de bord surveille sa propre fraîcheur
 const vieux = (nb) => ({
