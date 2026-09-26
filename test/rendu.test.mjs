@@ -71,6 +71,10 @@ La page qui réunit les chiffres et l'état des outils.
 
 Le vendeur touche une prime sur ce qu'il vend.
 
+Schéma : [le document](https://drive.google.com/file/d/abc/view) · piège : [clic](javascript:alert(1))
+
+**Statut** : en test
+
 ### ${jour(3).slice(8, 10)}/${jour(3).slice(5, 7)}/${jour(3).slice(0, 4)} · Outils · Incident · Snack
 
 **Effet** : aucune vente n'a pu aboutir pendant une soirée.
@@ -221,6 +225,9 @@ verifier(nombres.includes("142 DH") && nombres.includes("220 DH"), "ADR : encais
 verifier(/encaissé<\/dt>/.test(page) && /facturé<\/dt>/.test(page), "chaque ADR dit d'où il vient");
 verifier(page.includes("35,2 %") && page.includes("19,6 %"), "taux d'occupation sur les deux périodes");
 verifier(page.includes("Exercice 2026-2027"), "libellé de l'exercice");
+verifier(page.includes('<a href="https://drive.google.com/file/d/abc/view" target="_blank" rel="noopener">le document</a>'), "registre : un lien https devient cliquable");
+verifier(!page.includes('href="javascript'), "registre : un lien javascript: reste du texte");
+verifier(page.includes('<span class="pill p-test">en test</span>') && !page.includes("**Statut**"), "registre : « Statut » devient une pastille orange");
 verifier(page.includes("creation-reservation"), "branche en attente signalée");
 verifier(page.includes("déjà fusionnée"), "branche fusionnée repérée");
 verifier(page.includes("tresorerie") && page.includes("introuvable"), "dépôt absent : message clair");

@@ -4,7 +4,9 @@ import { rendreMarkdown } from "./markdown.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 /** Échappe, puis rend `code` et **gras** — le Markdown des TASKS.md. */
-const md = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/\*([^*]+)\*/g, "<i>$1</i>");
+// Liens [texte](https://…) : http et https seulement, jamais « javascript: ».
+// Traités avant l'italique, qui mangerait une étoile d'adresse.
+const md = (s) => esc(s).replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>').replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/\*([^*]+)\*/g, "<i>$1</i>");
 
 const PASTILLE = { crit: "Bloquant", warn: "À voir", info: "Info", ok: "OK", idle: "—" };
 
@@ -64,6 +66,9 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 .p-ok{color:var(--ok);background:var(--ok-soft)}
 .p-idle{color:var(--idle);background:var(--idle-soft)}
 .p-info{color:var(--accent);background:var(--accent-soft)}
+.p-test{color:#B85C00;background:#FDE8D2}
+.faits .statut{margin-top:8px}
+.faits a{color:var(--accent)}
 @media (max-width:640px){ .alerts li{grid-template-columns:1fr} .alerts .who{white-space:normal} }
 .flow-scroll{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px}
 .flow{display:grid;grid-template-columns:repeat(6,minmax(150px,1fr));min-width:900px}
@@ -413,6 +418,7 @@ function faitsHtml(faits, limite = 40, peutEditer = false, projets = []) {
       <div class="etiq"><span class="pill p-${f.nature === "Incident" || f.nature === "Risque" ? "warn" : f.nature === "Décision" ? "info" : "ok"}">${esc(f.nature)}</span>${projetDuFait(f, projets, peutEditer)}</div>
       ${f.effet ? `<p class="effet">${md(f.effet)}</p>` : ""}
       <p>${md(f.texte)}</p>
+      ${f.statut ? `<p class="statut"><span class="pill p-test">${esc(f.statut)}</span></p>` : ""}
       ${peutEditer ? `<a class="editer" href="/modifier?f=${encodeURIComponent(f.fichier)}&i=${f.index}">Modifier</a>` : ""}
     </div></li>`).join("")}</ol>`;
 }

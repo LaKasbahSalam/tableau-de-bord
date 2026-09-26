@@ -84,17 +84,23 @@ export function lireFaits(fichiers) {
     decouper(contenu, "###").forEach((b, index) => {
       const [date, domaine, nature, projet] = b.titre.split("·").map((x) => x.trim());
       let effet = "";
+      let statut = "";
       let texte = "";
       for (const ligne of b.corps) {
         const e = ligne.match(/^\*\*Effet\*\*\s*:\s*(.*)$/);
         if (e) { effet = e[1].trim(); continue; }
+        // « **Statut** : en test » : une pastille orange sous le fait, tant
+        // que ce qui est livré n'a pas fait ses preuves. On retire la ligne
+        // quand c'est confirmé.
+        const st = ligne.match(/^\*\*Statut\*\*\s*:\s*(.*)$/);
+        if (st) { statut = st[1].trim(); continue; }
         if (ligne.trim()) texte += (texte ? " " : "") + ligne.trim();
       }
       faits.push({
         date: isoDepuisFr(date) || "", date_fr: date,
         domaine: domaine || "—", nature: nature || "—",
         projet: projet && projet !== "—" ? projet : "",
-        effet, texte,
+        effet, statut, texte,
         fichier: nomFichier, index, debut: b.debut, fin: b.fin, brut: b.brut, titre: b.titre,
       });
     });
