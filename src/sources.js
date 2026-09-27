@@ -111,10 +111,11 @@ async function lireRegistre(env) {
     .filter((f) => f.type === "file" && /^\d{4}-\d{2}\.md$/.test(f.name))
     .map((f) => f.name).sort().reverse().slice(0, 4); // 4 derniers mois
 
-  const [projets, technique, previsions, documents, ...contenus] = await Promise.all([
+  const [projets, technique, previsions, semaine, documents, ...contenus] = await Promise.all([
     gh(`${base}/projets.md`, true),
     gh(`${base}/technique.md`, true),
     gh(`${base}/previsions.md`, true),
+    gh(`${base}/semaine.md`, true),
     listerTousDocuments(env),
     ...mois.map((n) => gh(`${base}/${n}`, true)),
   ]);
@@ -124,6 +125,7 @@ async function lireRegistre(env) {
       projets: projets || "",
       technique: technique || "",
       previsions: previsions || "",
+      semaine: semaine || "",
       documents,
       mois: mois.map((nom, i) => ({ nom, contenu: contenus[i] || "" })).filter((f) => f.contenu),
     },

@@ -159,7 +159,7 @@ async function modifier(requete, env, url) {
     await ecrireFichierRegistre(env, fichier, nouveauContenu, sha,
       `${supprimer ? "Retire" : "Corrige"} un ${quoi} du registre (depuis le tableau de bord)`);
     cache = null; // la page doit relire tout de suite
-    return new Response(null, { status: 303, headers: { Location: fichier === "previsions.md" ? "/#previsions" : "/" } });
+    return new Response(null, { status: 303, headers: { Location: "/" } });
   } catch (e) {
     const secours = { titre, brut: texte };
     return rendre({ fichier, index, bloc: secours, erreur: String(e.message || e), quoi: quoiDe(fichier) }, 409);

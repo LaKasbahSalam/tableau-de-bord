@@ -82,6 +82,12 @@ Schéma : [le document](https://drive.google.com/file/d/abc/view) · piège : [c
 La fonction de vente échouait à chaque appel.
 `,
   "/repos/LaKasbahSalam/Kasbah-Analytique/contents/pilotage/previsions.md": lire("Kasbah-Analytique/pilotage/previsions.md"),
+  "/repos/LaKasbahSalam/Kasbah-Analytique/contents/pilotage/semaine.md": `# Semaine 39 — du 21 au 27/09/2026
+
+## Synthèse générale
+
+- **Le snack** réussit son premier mois.
+`,
   // tresorerie : dépôt pas encore créé -> 404
 };
 
@@ -495,7 +501,14 @@ const pageLienRemplace = await r.text();
 verifier(pageLienRemplace.includes("https://drive.google.com/nouveau") && !pageLienRemplace.includes("https://drive.google.com/xyz"),
   "le lien est remplacé, pas dupliqué");
 
-// --- Les prévisions (modèle « Hôtel + Extension », pilotage/previsions.md)
+// --- Le résumé de la semaine (pilotage/semaine.md), à la place des prévisions
+verifier(page.indexOf("Résumé de la semaine dernière") > page.indexOf("Les chiffres") && page.indexOf("Résumé de la semaine dernière") < page.indexOf("Ce qui demande une action"),
+  "le résumé de la semaine vient juste après les chiffres");
+verifier(page.includes("Semaine 39 — du 21 au 27/09/2026") && page.includes("<h3>Synthèse générale</h3>") && page.includes("<b>Le snack</b> réussit"),
+  "le résumé est rendu, son titre en sous-titre");
+verifier(vueAssocie.includes("Résumé de la semaine dernière"), "l'associé voit aussi le résumé");
+
+// --- Les prévisions (pilotage/previsions.md) : plus affichées, mais toujours lues et modifiables
 const { lirePrevisions } = await import("../src/registre.js");
 const prevTexte = reponses["/repos/LaKasbahSalam/Kasbah-Analytique/contents/pilotage/previsions.md"];
 if (prevTexte) {
@@ -512,15 +525,7 @@ if (prevTexte) {
   verifier(dvt && Math.round(dvt.ebitda_an) === 573600 && Math.round(dvt.valorisations[0].haute) === 424889, "Kasbah 2030 : 573 600 DH par an, jusqu'à 424 889 €");
   verifier(prev.reglages.source.startsWith("https://docs.google.com/"), "le lien vers le classeur est repris");
 
-  const p2 = page.replace(/[  ]/g, " ");
-  verifier(page.indexOf("Les prévisions") > page.indexOf("Les chiffres") && page.indexOf("Les prévisions") < page.indexOf("Ce qui demande une action"),
-    "les prévisions viennent juste après les chiffres");
-  verifier(p2.includes("35 190 DH") && p2.includes("51 à 68 k€"), "le tableau des scénarios est rendu");
-  // Réel : TO 35,2 % face à 60 % ; résultat net des 2 mois terminés (15 000 − 2 000) / 2 = 6 500 face à 15 190
-  verifier(p2.includes("Prévu contre réel") && p2.includes("6 500 DH") && p2.includes("−41 % face au prévu"), "prévu contre réel, sans le mois en cours");
-  verifier(page.includes("/modifier?f=previsions.md&i=0"), "l'équipe peut modifier un scénario");
-  verifier(vueAssocie.includes("Les prévisions") && !vueAssocie.includes("f=previsions.md"), "l'associé voit les prévisions, sans les modifier");
-
+  verifier(!page.includes("Les prévisions") && !vueAssocie.includes("Les prévisions"), "les prévisions ne s'affichent plus");
   r = await worker.fetch(new Request("https://t.dev/modifier?f=previsions.md&i=1", { headers: { Cookie: cookie } }), env);
   const formPrev = await r.text();
   verifier(r.status === 200 && formPrev.includes("Modifier un scénario") && formPrev.includes("## 2nd lieu"), "le formulaire d'un scénario s'ouvre");
@@ -529,7 +534,7 @@ if (prevTexte) {
   fp.set("texte", "## 2nd lieu\n\n- **Lits :** 25\n- **Taux d'occupation :** 60 %\n- **ADR :** 115 MAD\n- **Charges :** 27 000 MAD par mois\n- **Multiple d'EBITDA :** 4 à 5");
   r = await worker.fetch(new Request("https://t.dev/modifier", { method: "POST", body: fp, headers: { Cookie: cookie } }), env);
   const ecritPrev = ecrits[ecrits.length - 1];
-  verifier(r.status === 303 && r.headers.get("Location") === "/#previsions" && ecritPrev.chemin.endsWith("pilotage/previsions.md")
+  verifier(r.status === 303 && r.headers.get("Location") === "/" && ecritPrev.chemin.endsWith("pilotage/previsions.md")
     && ecritPrev.contenu.includes("**Lits :** 25") && ecritPrev.contenu.includes("## Premium") && /scénario/.test(ecritPrev.message),
     "corriger un scénario écrit un commit, sans toucher aux autres");
 }
