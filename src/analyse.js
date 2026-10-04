@@ -302,20 +302,22 @@ export function analyser({ github, registre, supabase }, maintenant) {
   }
 
   // --- Tâches récurrentes : une ligne par tâche, une colonne par semaine
-  // (lundi → dimanche, comme les résumés de la semaine), la plus récente à droite.
-  const NB_SEMAINES = 6;
+  // (lundi → dimanche, comme les résumés de la semaine) : cette semaine en
+  // premier, puis les quatre à venir.
+  const NB_SEMAINES = 5;
   const recurrentes = { ok: registre.ok, semaines: [], lignes: [] };
   if (registre.ok) {
     const cetteSemaine = lundiDe(ici.jour);
     recurrentes.semaines = Array.from({ length: NB_SEMAINES }, (_, k) => {
-      const lundi = decaler(cetteSemaine, -7 * (NB_SEMAINES - 1 - k));
+      const lundi = decaler(cetteSemaine, 7 * k);
       return { lundi, numero: numeroSemaine(lundi), du: jourFr(lundi), au: jourFr(decaler(lundi, 6)), en_cours: lundi === cetteSemaine };
     });
     recurrentes.lignes = lireRecurrentes(registre.donnees.recurrent).map((t) => ({
       ...t,
       cases: recurrentes.semaines.map((s) => ({
         lundi: s.lundi,
-        etat: t.faites.includes(s.lundi) ? "fait" : (t.depuis && s.lundi < t.depuis) ? "avant" : s.en_cours ? "en_cours" : "manque",
+        etat: t.faites.includes(s.lundi) ? "fait" : (t.depuis && s.lundi < t.depuis) ? "avant"
+          : s.en_cours ? "en_cours" : s.lundi > cetteSemaine ? "a_venir" : "manque",
       })),
     }));
   }

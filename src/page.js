@@ -181,6 +181,7 @@ button.case:hover{border-color:var(--accent)}
 .case.fait{background:var(--ok);border-color:var(--ok)}
 .case.manque{border-color:var(--warn);background:var(--warn-soft)}
 .case.en_cours{border-color:var(--accent)}
+.case.a_venir{opacity:.7}
 .case.avant{border-style:dashed;opacity:.45}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px}
 .chart svg{width:100%;height:auto;display:block}
@@ -343,7 +344,7 @@ function semaineHtml(texte) {
 function recurrentesHtml(r, peutCocher) {
   if (!r || !r.ok) return `<div class="panne">Le registre n'est pas lu : les tâches récurrentes sont dans <span class="mono">pilotage/recurrent.md</span>.</div>`;
   if (!r.lignes.length) return `<div class="panne">Aucune tâche récurrente : elles s'écrivent dans <span class="mono">pilotage/recurrent.md</span> du dépôt Kasbah-Analytique.</div>`;
-  const AIDE = { fait: "Faite", manque: "Pas faite", en_cours: "À faire cette semaine", avant: "La tâche n'existait pas encore" };
+  const AIDE = { fait: "Faite", manque: "Pas faite", en_cours: "À faire cette semaine", a_venir: "À venir", avant: "La tâche n'existait pas encore" };
   const caseHtml = (t, c) => {
     const signe = c.etat === "fait" ? "✓" : "";
     const titre = `${AIDE[c.etat]} · semaine du ${c.lundi.slice(8, 10)}/${c.lundi.slice(5, 7)}`;
@@ -490,7 +491,7 @@ export function pageTableau(v, lu, associe = false) {
 </section>
 
 <section id="recurrentes" aria-labelledby="h-rec">
-  <div class="section-head"><h2 id="h-rec">Les tâches de chaque semaine</h2><p>Une colonne par semaine, comme les résumés · ${associe ? "" : "cliquer une case la coche · "}<span class="mono">pilotage/recurrent.md</span></p></div>
+  <div class="section-head"><h2 id="h-rec">Les tâches de chaque semaine</h2><p>Cette semaine, puis les quatre suivantes ·${associe ? "" : "cliquer une case la coche · "}<span class="mono">pilotage/recurrent.md</span></p></div>
   ${recurrentesHtml(v.recurrentes, !associe)}
 </section>
 

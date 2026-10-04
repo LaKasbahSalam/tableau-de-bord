@@ -97,7 +97,7 @@ La fonction de vente échouait à chaque appel.
   // tresorerie : dépôt pas encore créé -> 404
 };
 
-// Les lundis des semaines d'avant (0 = cette semaine), au format du fichier.
+// Les lundis des semaines d'avant (0 = cette semaine, négatif = à venir), au format du fichier.
 const lundi = (n) => {
   const d = new Date(); d.setUTCHours(12, 0, 0, 0);
   d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7) - 7 * n);
@@ -109,9 +109,13 @@ reponses["/repos/LaKasbahSalam/Kasbah-Analytique/contents/pilotage/recurrent.md"
 ## Vérifier les ventes de Repas
 
 **Depuis :** ${lundi(3).fr}
-**Fait :** ${lundi(3).fr}, ${lundi(1).fr}
+**Fait :** ${lundi(3).fr}, ${lundi(1).fr}, ${lundi(-1).fr}
 
 Rapprocher les achats de repas des fiches clients.
+
+## Compter la caisse
+
+**Depuis :** ${lundi(-2).fr}
 `;
 
 const supabase = {
@@ -587,11 +591,14 @@ if (prevTexte) {
 {
   const grille = (page.match(/<section id="recurrentes"[\s\S]*?<\/section>/) || [""])[0];
   verifier(grille.includes("Vérifier les ventes de Repas"), "la tâche récurrente a sa ligne");
-  verifier((grille.match(/<th class="[^"]*">S\d+<small>/g) || []).length === 6, "six colonnes de semaines, numérotées comme les résumés");
-  verifier((grille.match(/class="case fait"/g) || []).length === 2, "les deux semaines faites sont cochées");
-  verifier((grille.match(/class="case manque"/g) || []).length === 1, "la semaine oubliée ressort en orange");
+  const entetes = grille.match(/<th class="[^"]*">S\d+<small>/g) || [];
+  verifier(entetes.length === 5, "cinq colonnes de semaines, numérotées comme les résumés");
+  verifier(entetes[0].includes("encours"), "la première colonne est cette semaine, les quatre suivantes sont à venir");
+  verifier((grille.match(/class="case fait"/g) || []).length === 1, "une semaine cochée d'avance reste cochée");
+  verifier((grille.match(/class="case a_venir"/g) || []).length === 6, "les semaines à venir attendent, sans orange");
+  verifier(!grille.includes("case manque"), "rien de passé n'est affiché");
   verifier((grille.match(/class="case avant"/g) || []).length === 2, "avant « Depuis », pas de case à cocher");
-  verifier(grille.includes('class="case en_cours"'), "la semaine en cours attend");
+  verifier((grille.match(/class="case en_cours"/g) || []).length === 1, "la semaine en cours attend");
   const grilleAssocie = (vueAssocie.match(/<section id="recurrentes"[\s\S]*?<\/section>/) || [""])[0];
   verifier(grilleAssocie.includes("case fait") && !grilleAssocie.includes("/recurrente"), "l'associé voit la grille, sans pouvoir cocher");
 
@@ -604,11 +611,11 @@ if (prevTexte) {
   r = await cocher(lundi(0).iso);
   const ecritRec = ecrits[ecrits.length - 1];
   verifier(r.status === 303 && ecrits.length === avantRec + 1 && ecritRec.chemin.endsWith("pilotage/recurrent.md"), "cocher une case écrit un commit");
-  verifier(ecritRec.contenu.includes(`**Fait :** ${lundi(3).fr}, ${lundi(1).fr}, ${lundi(0).fr}
+  verifier(ecritRec.contenu.includes(`**Fait :** ${lundi(3).fr}, ${lundi(1).fr}, ${lundi(0).fr}, ${lundi(-1).fr}
 `), "la semaine est ajoutée, dans l'ordre");
   verifier(ecritRec.contenu.includes("Rapprocher les achats") && /^Coche « Vérifier les ventes de Repas », semaine du/.test(ecritRec.message), "le reste est intact, le commit dit quoi");
   r = await cocher(lundi(1).iso);
-  verifier(r.status === 303 && ecrits[ecrits.length - 1].contenu.includes(`**Fait :** ${lundi(3).fr}
+  verifier(r.status === 303 && ecrits[ecrits.length - 1].contenu.includes(`**Fait :** ${lundi(3).fr}, ${lundi(-1).fr}
 `) && /^Décoche/.test(ecrits[ecrits.length - 1].message), "recliquer une case cochée la décoche");
   avantRec = ecrits.length;
   r = await cocher(lundi(0).iso, cookieAssocie);
