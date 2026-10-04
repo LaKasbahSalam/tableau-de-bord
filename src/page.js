@@ -80,11 +80,13 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 .pli[open]>summary h2::before{transform:rotate(90deg)}
 .pli>summary:hover h2{color:var(--accent)}
 .pli:not([open])>summary{margin-bottom:0}
-.taches-proj{margin-top:6px}
-.taches-proj summary{cursor:pointer;font-family:var(--mono);font-size:11.5px;color:var(--accent);width:fit-content}
-.taches-proj .label{margin:10px 0 4px}
-.taches-proj .todo{font-size:13px;gap:5px}
-.taches-proj .todo small{display:inline;margin-left:4px}
+.col-taches{min-width:170px}
+#projets td:first-child{min-width:170px}
+td.echeance{white-space:normal;min-width:110px;max-width:160px}
+.todo.taches{font-size:13px;gap:5px}
+.todo.taches small{display:inline;margin-left:4px}
+.vide-cell{color:var(--ink-3)}
+.plus{display:inline-block;margin-top:6px;font-family:var(--mono);font-size:11.5px;text-decoration:none}
 .pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:999px;white-space:nowrap;justify-self:start;align-self:start}
 .pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
 .p-crit{color:var(--crit);background:var(--crit-soft)}
@@ -415,19 +417,24 @@ function occupationHtml(occ) {
 }
 
 /**
- * Sous chaque projet, replié : ce qui est programmé (les cases `- [ ]` du
- * bloc dans `projets.md`) et ce qui a été fait (les faits du registre qui
- * nomment ce projet, le plus récent en haut).
+ * Les tâches d'un projet, affichées dans le tableau : ce qui est programmé
+ * (les cases `- [ ]` du bloc dans `projets.md`) et ce qui a été fait (les
+ * faits du registre qui nomment ce projet, les plus récents en haut).
  */
-function tachesDuProjetHtml(x) {
-  const prog = x.programmees || [], faites = x.faites || [];
-  if (!prog.length && !faites.length) return "";
-  const resume = [prog.length ? `${prog.length} programmée${prog.length > 1 ? "s" : ""}` : "", faites.length ? `${faites.length} faite${faites.length > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ");
-  return `<details class="taches-proj"><summary>Tâches : ${resume}</summary>
-    ${prog.length ? `<div class="label">Programmé</div><ul class="todo">${prog.map((t) => `<li><span>${md(t.texte)}</span></li>`).join("")}</ul>` : ""}
-    ${faites.length ? `<div class="label">Fait</div><ul class="todo">${faites.map((f) =>
-      `<li class="done"><span>${md(f.texte.length > 160 ? f.texte.slice(0, 160) + "…" : f.texte)}${f.date_fr || f.nature ? ` <small>${esc([f.date_fr, f.nature].filter(Boolean).join(" · "))}</small>` : ""}</span></li>`).join("")}</ul>` : ""}
-  </details>`;
+const FAITES_MONTREES = 3;
+function programmeesHtml(x) {
+  const prog = x.programmees || [];
+  if (!prog.length) return `<span class="vide-cell">—</span>`;
+  return `<ul class="todo taches">${prog.map((t) => `<li><span>${md(t.texte)}</span></li>`).join("")}</ul>`;
+}
+function faitesHtml(x) {
+  const faites = x.faites || [];
+  if (!faites.length) return `<span class="vide-cell">—</span>`;
+  const court = (t) => (t.length > 80 ? t.slice(0, 80).replace(/s+S*$/, "") + "…" : t);
+  const reste = faites.length - FAITES_MONTREES;
+  return `<ul class="todo taches">${faites.slice(0, FAITES_MONTREES).map((f) =>
+    `<li class="done"><span>${md(court(f.texte))}${f.date_fr ? ` <small>${esc(f.date_fr)}</small>` : ""}</span></li>`).join("")}</ul>
+    ${reste > 0 ? `<a class="plus" href="#faits">et ${reste} plus ancien${reste > 1 ? "s" : ""}</a>` : ""}`;
 }
 
 function projetsHtml(p, peutEditer = false) {
@@ -435,12 +442,13 @@ function projetsHtml(p, peutEditer = false) {
   const ordre = ["En cours", "À faire", "En attente", "Plus tard", "Terminé", "Sans statut"];
   const compte = ordre.filter((k) => p.compte[k]).map((k) => `<span><b>${p.compte[k]}</b> ${esc(k.toLowerCase())}</span>`).join("");
   return `<div class="compte">${compte}</div><div class="tbl-scroll"><table>
-    <thead><tr><th>Projet</th><th>Statut</th><th>Domaine</th><th>Responsable</th><th>Échéance</th><th>Documents</th>${peutEditer ? "<th></th>" : ""}</tr></thead>
+    <thead><tr><th>Projet</th><th>Statut</th><th>Programmé</th><th>Fait</th><th>Domaine</th><th>Responsable</th><th>Échéance</th><th>Documents</th>${peutEditer ? "<th></th>" : ""}</tr></thead>
     <tbody>${p.lignes.map((x) => `<tr>
-      <td><b>${esc(x.nom)}</b>${x.texte ? `<br><small>${esc(x.texte.slice(0, 140))}${x.texte.length > 140 ? "…" : ""}</small>` : ""}${tachesDuProjetHtml(x)}</td>
+      <td><b>${esc(x.nom)}</b>${x.texte ? `<br><small>${esc(x.texte.slice(0, 90).replace(/s+S*$/, ""))}${x.texte.length > 90 ? "…" : ""}</small>` : ""}</td>
       <td><span class="pill p-${x.niveau}">${esc(x.statut || "Sans statut")}</span></td>
+      <td class="col-taches">${programmeesHtml(x)}</td><td class="col-taches">${faitesHtml(x)}</td>
       <td>${esc(x.domaine || "—")}</td><td>${esc(x.responsable || "—")}</td>
-      <td class="num">${esc(x.echeanceTexte)}</td>
+      <td class="num echeance">${esc(x.echeanceTexte)}</td>
       <td>${(x.documents || []).length ? `<ul class="docs">${x.documents.map((d) =>
         `<li><a href="${d.url ? esc(d.url) : `/document?p=${encodeURIComponent(d.chemin)}`}"${d.url ? ' target="_blank" rel="noopener"' : ""}>${esc(d.nom)}</a></li>`).join("")}</ul>` : ""}
         ${peutEditer ? `<a class="editer" href="/documents?i=${x.index}">${(x.documents || []).length ? `Gérer (${x.documents.length}/10)` : "+ Ajouter"}</a>` : (!(x.documents || []).length ? "—" : "")}</td>
@@ -560,7 +568,7 @@ export function pageTableau(v, lu, associe = false) {
 </section>
 
 <section id="projets" aria-labelledby="h-proj-ouverts">
-  ${pli("h-proj-ouverts", "Les projets", `Hors terminés · sous chaque projet : ses tâches programmées et faites · <span class="mono">pilotage/projets.md</span>`,
+  ${pli("h-proj-ouverts", "Les projets", `Hors terminés · ses tâches programmées et les dernières faites · <span class="mono">pilotage/projets.md</span>`,
     projetsHtml(v.projets_ouverts, !associe))}
 </section>
 

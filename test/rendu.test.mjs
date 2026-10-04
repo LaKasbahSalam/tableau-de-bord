@@ -361,7 +361,9 @@ Rien à voir.
   verifier(ech && /20\/09\/2026/.test(ech.guide.verifier), "l'échéance dépassée renvoie au dernier fait du projet, pour vérifier");
   const { pageTableau } = await import("../src/page.js");
   const html = pageTableau(vue, new Date());
-  verifier(/<details class="taches-proj"><summary>Tâches : 1 programmée · 2 faites<\/summary>/.test(html), "le projet montre ses tâches, repliées");
+  verifier(html.includes("<th>Programmé</th><th>Fait</th>"), "le tableau des projets a ses colonnes de tâches");
+  const ligne = (html.match(/<tr>\s*<td><b>Snack<\/b>[\s\S]*?<\/tr>/) || [""])[0];
+  verifier(ligne.includes("Décider de la suite") && ligne.includes("les ventes passent de nouveau.") && !ligne.includes("<details"), "les tâches sont affichées dans la ligne du projet, sans repli");
 }
 
 // --- Une seule page : le mot de passe de l'associé ouvre la même adresse
