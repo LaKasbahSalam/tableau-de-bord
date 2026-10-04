@@ -318,6 +318,51 @@ const vueExemple = analyser({
 const bloquantes = vueExemple.alertes.filter((a) => a.niveau === "crit");
 verifier(bloquantes.length === 1 && bloquantes[0].titre.startsWith("Snack : mise en service"), "une migration à appliquer devient une alerte bloquante");
 verifier(vueExemple.projets[0].ouverts.length === 2, "les deux tâches ouvertes sont reprises, la tâche faite non");
+const g = bloquantes[0].guide || {};
+verifier(g.faire && g.fini && g.verifier, "l'action dit comment faire, quand c'est fini, comment vérifier");
+verifier(/tggdwwvdlrgncbntxkfs/.test(g.faire) && /KasbahCalendar\/supabase\/migrations/.test(g.faire), "la migration de l'appli désigne la base de l'appli et son dossier");
+verifier(vueExemple.alertes.every((a) => a.guide), "toutes les actions ont leur mode d'emploi");
+
+// --- Les tâches d'un projet : programmées (cases du bloc) et faites (registre)
+{
+  const projetsMd = `# Projets
+
+## Snack · En cours · Revenus · Karim
+
+**Échéance :** 01/01/2020
+
+Carte et ventes.
+
+- [ ] Décider de la suite — 30/11/2026
+- [x] Ouvrir la carte — 01/09/2026
+`;
+  const moisMd = `# Septembre 2026
+
+### 20/09/2026 · Outils · Livraison · Snack
+
+**Effet** : les ventes passent de nouveau.
+
+Correctif de la fonction de vente.
+
+### 21/09/2026 · Outils · Livraison · Autre projet
+
+Rien à voir.
+`;
+  const vue = analyser({
+    github: { ok: true, donnees: [] },
+    registre: { ok: true, donnees: { projets: projetsMd, mois: [{ nom: "2026-09.md", contenu: moisMd }], technique: "", recurrent: "", semaine: "" } },
+    supabase: { ok: false, erreur: "" },
+  }, new Date());
+  const snack = vue.projets_ouverts.lignes[0];
+  verifier(snack.texte === "Carte et ventes.", "les cases ne se mêlent pas à la description du projet");
+  verifier(snack.programmees.length === 1 && snack.programmees[0].texte.startsWith("Décider de la suite"), "la case ouverte est programmée");
+  verifier(snack.faites.length === 2 && snack.faites[0].texte === "les ventes passent de nouveau.", "le fait du registre et la case cochée sont faits, le fait d'un autre projet non");
+  const ech = vue.alertes.find((a) => a.titre.startsWith("Snack : échéance dépassée"));
+  verifier(ech && /20\/09\/2026/.test(ech.guide.verifier), "l'échéance dépassée renvoie au dernier fait du projet, pour vérifier");
+  const { pageTableau } = await import("../src/page.js");
+  const html = pageTableau(vue, new Date());
+  verifier(/<details class="taches-proj"><summary>Tâches : 1 programmée · 2 faites<\/summary>/.test(html), "le projet montre ses tâches, repliées");
+}
 
 // --- Une seule page : le mot de passe de l'associé ouvre la même adresse
 let fi = new FormData(); fi.set("mot_de_passe", "associe");
@@ -585,6 +630,14 @@ if (prevTexte) {
   verifier(r.status === 303 && r.headers.get("Location") === "/" && ecritPrev.chemin.endsWith("pilotage/previsions.md")
     && ecritPrev.contenu.includes("**Lits :** 25") && ecritPrev.contenu.includes("## Premium") && /scénario/.test(ecritPrev.message),
     "corriger un scénario écrit un commit, sans toucher aux autres");
+}
+
+// --- Les grands titres se plient ; « Ce qui s'est fait » est replié d'office
+{
+  const plis = page.match(/<details class="pli"( open)?>\s*<summary class="section-head"><h2 id="([^"]+)">/g) || [];
+  verifier(plis.length >= 8, "chaque grand titre est pliable");
+  verifier(/<details class="pli">\s*<summary class="section-head"><h2 id="h-faits">/.test(page), "le journal de ce qui s'est fait est replié");
+  verifier(/<details class="pli" open>\s*<summary class="section-head"><h2 id="h-att">/.test(page), "ce qui demande une action reste ouvert");
 }
 
 // --- Les tâches de chaque semaine : une ligne par tâche, une colonne par semaine

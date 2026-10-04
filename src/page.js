@@ -8,6 +8,14 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 // Traités avant l'italique, qui mangerait une étoile d'adresse.
 const md = (s) => esc(s).replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>').replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/\*([^*]+)\*/g, "<i>$1</i>");
 
+/**
+ * Un grand titre qu'on plie et déplie : le titre (et sa ligne d'aide) est le
+ * bouton. `titre` et `sous` sont déjà du HTML.
+ */
+const pli = (id, titre, sous, contenu, ouvert = true) => `<details class="pli"${ouvert ? " open" : ""}>
+  <summary class="section-head"><h2 id="${id}">${titre}</h2>${sous ? `<p>${sous}</p>` : ""}</summary>
+  ${contenu}</details>`;
+
 const PASTILLE = { crit: "Bloquant", warn: "À voir", info: "Info", ok: "OK", idle: "—" };
 
 const CSS = `
@@ -59,6 +67,24 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 .alerts .what p{margin:2px 0 0;color:var(--ink-2);font-size:14px}
 .alerts .who{font-size:12px;color:var(--ink-3);font-family:var(--mono);white-space:nowrap;padding-top:2px}
 .vide{padding:18px;color:var(--ok);font-weight:500}
+.guide{margin-top:8px;font-size:13.5px}
+.guide summary{cursor:pointer;font-family:var(--mono);font-size:11.5px;color:var(--accent);width:fit-content}
+.guide summary:hover{text-decoration:underline}
+.guide dl{margin:8px 0 0;padding:10px 12px;background:var(--sunk);border-radius:8px;display:grid;grid-template-columns:150px 1fr;gap:8px 14px}
+.guide dt{font-family:var(--mono);font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);padding-top:2px}
+.guide dd{margin:0;color:var(--ink-2);min-width:0;overflow-wrap:anywhere}
+@media (max-width:640px){.guide dl{grid-template-columns:1fr;gap:2px}.guide dd{margin-bottom:8px}}
+.pli>summary{cursor:pointer;list-style:none}
+.pli>summary::-webkit-details-marker{display:none}
+.pli>summary h2::before{content:"▸";display:inline-block;width:1em;color:var(--ink-3);transition:transform .15s}
+.pli[open]>summary h2::before{transform:rotate(90deg)}
+.pli>summary:hover h2{color:var(--accent)}
+.pli:not([open])>summary{margin-bottom:0}
+.taches-proj{margin-top:6px}
+.taches-proj summary{cursor:pointer;font-family:var(--mono);font-size:11.5px;color:var(--accent);width:fit-content}
+.taches-proj .label{margin:10px 0 4px}
+.taches-proj .todo{font-size:13px;gap:5px}
+.taches-proj .todo small{display:inline;margin-left:4px}
 .pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:999px;white-space:nowrap;justify-self:start;align-self:start}
 .pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
 .p-crit{color:var(--crit);background:var(--crit-soft)}
@@ -230,11 +256,19 @@ export function pageConnexion({ erreur, bloque, titre = "Tableau de bord Kasbah"
 </form></div></body></html>`;
 }
 
+/** Sous chaque action, repliée : comment faire, quand c'est fini, comment vérifier. */
+function guideHtml(g) {
+  if (!g) return "";
+  const lignes = [["Comment faire", g.faire], ["C'est fini quand", g.fini], ["Déjà fait ? Vérifier", g.verifier]].filter(([, t]) => t);
+  return `<details class="guide"><summary>Comment faire · quand c'est fini · vérifier</summary>
+    <dl>${lignes.map(([k, t]) => `<dt>${esc(k)}</dt><dd>${md(t)}</dd>`).join("")}</dl></details>`;
+}
+
 function alertesHtml(alertes) {
   if (!alertes.length) return `<div class="alerts"><div class="vide">Rien ne demande d'action pour l'instant.</div></div>`;
   return `<ul class="alerts">${alertes.map((a) => `<li>
     <span class="pill p-${a.niveau}">${PASTILLE[a.niveau]}</span>
-    <div class="what"><b>${md(a.titre)}</b>${a.detail ? `<p>${md(a.detail)}</p>` : ""}</div>
+    <div class="what"><b>${md(a.titre)}</b>${a.detail ? `<p>${md(a.detail)}</p>` : ""}${guideHtml(a.guide)}</div>
     <span class="who">${esc(a.qui)}</span></li>`).join("")}</ul>`;
 }
 
@@ -271,8 +305,7 @@ const pourcent = (v) => (v == null ? "—" : `${(Number(v) * 100).toLocaleString
 export function chiffresHtml(ch) {
   if (!ch || (!ch.exercice && !ch.mois)) {
     return `<section aria-labelledby="h-chiffres">
-      <div class="section-head"><h2 id="h-chiffres">Les chiffres</h2></div>
-      <div class="panne">Pas encore de chiffres : ils viennent de Kasbah Analytics, qui n'est pas lu.</div></section>`;
+      ${pli("h-chiffres", "Les chiffres", "", `<div class="panne">Pas encore de chiffres : ils viennent de Kasbah Analytics, qui n'est pas lu.</div>`)}</section>`;
   }
   const ex = ch.exercice || {}, mo = ch.mois || {};
   // Le mois passé n'existe que si la fonction Supabase le rend (migration
@@ -305,13 +338,12 @@ export function chiffresHtml(ch) {
     { titre: "Taux d'occupation", aide: "Places vendues sur 17 places", lignes: ligne("taux_occupation", pourcent) },
   ];
   return `<section aria-labelledby="h-chiffres">
-  <div class="section-head"><h2 id="h-chiffres">Les chiffres</h2>
-    <p>Argent : compte de résultat de la V16, au mois de l'encaissement · le mois en cours est forcément partiel</p></div>
-  <div class="chiffres">${tuiles.map((t) => `<article class="kpi">
+  ${pli("h-chiffres", "Les chiffres", "Argent : compte de résultat de la V16, au mois de l'encaissement · le mois en cours est forcément partiel",
+    `<div class="chiffres">${tuiles.map((t) => `<article class="kpi">
       <h3>${esc(t.titre)}</h3><p class="aide">${esc(t.aide)}</p>
       <dl class="deux">${t.lignes.map(([label, valeur]) => `<dt>${esc(label)}</dt><dd>${esc(valeur)}</dd>`).join("")}</dl>
     </article>`).join("")}</div>
-  ${ex.mois_comptes ? `<p class="sous-bande">Exercice en cours : ${ex.mois_comptes} mois comptés, de ${esc(moisLong(ex.depuis))} à ${esc(moisLong(ex.jusqua))}${ex.adr_encaisse_mois ? `, dont ${ex.adr_encaisse_mois} terminés pour l'ADR encaissé` : ""}.</p>` : ""}
+  ${ex.mois_comptes ? `<p class="sous-bande">Exercice en cours : ${ex.mois_comptes} mois comptés, de ${esc(moisLong(ex.depuis))} à ${esc(moisLong(ex.jusqua))}${ex.adr_encaisse_mois ? `, dont ${ex.adr_encaisse_mois} terminés pour l'ADR encaissé` : ""}.</p>` : ""}`)}
 </section>`;
 }
 
@@ -377,9 +409,25 @@ function occupationHtml(occ) {
   }).join("");
   const resume = occ.map((o) => `${o.mois.slice(0, 7)} : ${Math.round((Number(o.taux) || 0) * 1000) / 10} %`).join(", ");
   return `<section aria-labelledby="h-num">
-  <div class="section-head"><h2 id="h-num">Taux d'occupation</h2><p>12 derniers mois · le détail est dans Looker Studio</p></div>
-  <div class="panel chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Taux d'occupation : ${esc(resume)}">${lignes}${barres}</svg>
-  <div class="legend"><span>en %, vue <span class="mono">v_occupation</span></span><span>barre claire = mois en cours</span></div></div></section>`;
+  ${pli("h-num", "Taux d'occupation", "12 derniers mois · le détail est dans Looker Studio",
+    `<div class="panel chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Taux d'occupation : ${esc(resume)}">${lignes}${barres}</svg>
+  <div class="legend"><span>en %, vue <span class="mono">v_occupation</span></span><span>barre claire = mois en cours</span></div></div>`)}</section>`;
+}
+
+/**
+ * Sous chaque projet, replié : ce qui est programmé (les cases `- [ ]` du
+ * bloc dans `projets.md`) et ce qui a été fait (les faits du registre qui
+ * nomment ce projet, le plus récent en haut).
+ */
+function tachesDuProjetHtml(x) {
+  const prog = x.programmees || [], faites = x.faites || [];
+  if (!prog.length && !faites.length) return "";
+  const resume = [prog.length ? `${prog.length} programmée${prog.length > 1 ? "s" : ""}` : "", faites.length ? `${faites.length} faite${faites.length > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ");
+  return `<details class="taches-proj"><summary>Tâches : ${resume}</summary>
+    ${prog.length ? `<div class="label">Programmé</div><ul class="todo">${prog.map((t) => `<li><span>${md(t.texte)}</span></li>`).join("")}</ul>` : ""}
+    ${faites.length ? `<div class="label">Fait</div><ul class="todo">${faites.map((f) =>
+      `<li class="done"><span>${md(f.texte.length > 160 ? f.texte.slice(0, 160) + "…" : f.texte)}${f.date_fr || f.nature ? ` <small>${esc([f.date_fr, f.nature].filter(Boolean).join(" · "))}</small>` : ""}</span></li>`).join("")}</ul>` : ""}
+  </details>`;
 }
 
 function projetsHtml(p, peutEditer = false) {
@@ -389,7 +437,7 @@ function projetsHtml(p, peutEditer = false) {
   return `<div class="compte">${compte}</div><div class="tbl-scroll"><table>
     <thead><tr><th>Projet</th><th>Statut</th><th>Domaine</th><th>Responsable</th><th>Échéance</th><th>Documents</th>${peutEditer ? "<th></th>" : ""}</tr></thead>
     <tbody>${p.lignes.map((x) => `<tr>
-      <td><b>${esc(x.nom)}</b>${x.texte ? `<br><small>${esc(x.texte.slice(0, 140))}${x.texte.length > 140 ? "…" : ""}</small>` : ""}</td>
+      <td><b>${esc(x.nom)}</b>${x.texte ? `<br><small>${esc(x.texte.slice(0, 140))}${x.texte.length > 140 ? "…" : ""}</small>` : ""}${tachesDuProjetHtml(x)}</td>
       <td><span class="pill p-${x.niveau}">${esc(x.statut || "Sans statut")}</span></td>
       <td>${esc(x.domaine || "—")}</td><td>${esc(x.responsable || "—")}</td>
       <td class="num">${esc(x.echeanceTexte)}</td>
@@ -486,52 +534,52 @@ export function pageTableau(v, lu, associe = false) {
 </section>
 
 <section id="semaine" aria-labelledby="h-sem">
-  <div class="section-head"><h2 id="h-sem">Résumés de la semaine</h2><p>Cliquez sur une semaine pour la déplier · <span class="mono">pilotage/semaine.md</span></p></div>
-  ${semaineHtml(v.semaine)}
+  ${pli("h-sem", "Résumés de la semaine", `Cliquez sur une semaine pour la déplier · <span class="mono">pilotage/semaine.md</span>`,
+    semaineHtml(v.semaine))}
 </section>
 
 <section id="recurrentes" aria-labelledby="h-rec">
-  <div class="section-head"><h2 id="h-rec">Les tâches de chaque semaine</h2><p>Cette semaine, puis les quatre suivantes ·${associe ? "" : "cliquer une case la coche · "}<span class="mono">pilotage/recurrent.md</span></p></div>
-  ${recurrentesHtml(v.recurrentes, !associe)}
+  ${pli("h-rec", "Les tâches de chaque semaine", `Cette semaine, puis les quatre suivantes · ${associe ? "" : "cliquer une case la coche · "}<span class="mono">pilotage/recurrent.md</span>`,
+    recurrentesHtml(v.recurrentes, !associe))}
 </section>
 
 <section id="action" aria-labelledby="h-att">
-  <div class="section-head"><h2 id="h-att">Ce qui demande une action</h2><p>Class\u00e9 par gravit\u00e9 \u00b7 qui est concern\u00e9, \u00e0 droite</p></div>
-  ${alertesHtml(alertes)}
+  ${pli("h-att", "Ce qui demande une action", "Classé par gravité · sous chaque action : comment la faire, quand elle est finie, comment vérifier",
+    alertesHtml(alertes))}
 </section>
 
 <section id="faits" aria-labelledby="h-faits">
-  <div class="section-head"><h2 id="h-faits">Ce qui s'est fait</h2><p>Registre tenu \u00e0 chaque s\u00e9ance \u00b7 l'effet est en t\u00eate de chaque fait</p></div>
-  ${domaines.length ? `<div class="dom">${domaines.map(([d, n]) => `<span><b>${n}</b> ${esc(d.toLowerCase())}</span>`).join("")}<span>sur 30 jours</span></div>` : ""}
-  ${faitsHtml(v.faits, 12, !associe, v.noms_projets || [])}
+  ${pli("h-faits", "Ce qui s'est fait", `${v.faits && v.faits.length ? `${Math.min(v.faits.length, 25)} derniers faits · ` : ""}registre tenu à chaque séance · cliquer pour déplier`,
+    `${domaines.length ? `<div class="dom">${domaines.map(([d, n]) => `<span><b>${n}</b> ${esc(d.toLowerCase())}</span>`).join("")}<span>sur 30 jours</span></div>` : ""}
+  ${faitsHtml(v.faits, 25, !associe, v.noms_projets || [])}`, false)}
 </section>
 
 <section id="nuit" aria-labelledby="h-flow">
-  <div class="section-head"><h2 id="h-flow">Les t\u00e2ches automatiques</h2><p>Heure du Maroc \u00b7 les rappels se lisent dans la copie de 23h30, donc avec un jour de d\u00e9calage</p></div>
-  ${fluxHtml(v.flux)}
+  ${pli("h-flow", "Les tâches automatiques", "Heure du Maroc · les rappels se lisent dans la copie de 23h30, donc avec un jour de décalage",
+    fluxHtml(v.flux))}
 </section>
 
 <section id="projets" aria-labelledby="h-proj-ouverts">
-  <div class="section-head"><h2 id="h-proj-ouverts">Les projets</h2><p>Hors termin\u00e9s \u00b7 <span class="mono">pilotage/projets.md</span></p></div>
-  ${projetsHtml(v.projets_ouverts, !associe)}
+  ${pli("h-proj-ouverts", "Les projets", `Hors terminés · sous chaque projet : ses tâches programmées et faites · <span class="mono">pilotage/projets.md</span>`,
+    projetsHtml(v.projets_ouverts, !associe))}
 </section>
 
 ${associe ? "" : `<section id="depots" aria-labelledby="h-proj">
-  <div class="section-head"><h2 id="h-proj">Les outils</h2><p>Lu sur GitHub : seul ce qui a \u00e9t\u00e9 envoy\u00e9 appara\u00eet ici</p></div>
-  ${v.projets_depots && v.projets_depots.length ? `<div class="grid">${v.projets_depots.map(projetHtml).join("")}</div>`
-    : `<div class="panne">GitHub n'est pas lu : les fiches appara\u00eetront une fois la cl\u00e9 ajout\u00e9e.</div>`}
+  ${pli("h-proj", "Les outils", "Lu sur GitHub : seul ce qui a été envoyé apparaît ici",
+    v.projets_depots && v.projets_depots.length ? `<div class="grid">${v.projets_depots.map(projetHtml).join("")}</div>`
+    : `<div class="panne">GitHub n'est pas lu : les fiches apparaîtront une fois la clé ajoutée.</div>`)}
 </section>`}
 
 ${occupationHtml(v.occupation)}
 
 <section id="technique" aria-labelledby="h-doc">
-  <div class="section-head"><h2 id="h-doc">Comment c'est construit</h2><p>Sans code \u00b7 tenu dans <span class="mono">pilotage/technique.md</span></p></div>
-  ${v.technique ? `<details class="doc-repli"><summary>Architecture, fonctions, secrets, et ce qui est fragile</summary>
+  ${pli("h-doc", "Comment c'est construit", `Sans code · tenu dans <span class="mono">pilotage/technique.md</span>`,
+    `${v.technique ? `<details class="doc-repli"><summary>Architecture, fonctions, secrets, et ce qui est fragile</summary>
     <article class="doc">${rendreMarkdown(sansPremierTitre(v.technique))}</article></details>`
-    : `<div class="panne">La page technique n'est pas encore \u00e9crite (<span class="mono">pilotage/technique.md</span>).</div>`}
-  ${v.migrations_recentes && v.migrations_recentes.length ? `<details class="doc-repli"><summary>Derni\u00e8res migrations \u00e9crites (appliqu\u00e9es \u00e0 la main dans Supabase)</summary>
-    <div class="tbl-scroll"><table><thead><tr><th>D\u00e9p\u00f4t</th><th>Migration</th></tr></thead><tbody>${
-      v.migrations_recentes.map((m) => `<tr><td>${esc(m.depot)}</td><td class="mono">${esc(m.nom)}</td></tr>`).join("")}</tbody></table></div></details>` : ""}
+    : `<div class="panne">La page technique n'est pas encore écrite (<span class="mono">pilotage/technique.md</span>).</div>`}
+  ${v.migrations_recentes && v.migrations_recentes.length ? `<details class="doc-repli"><summary>Dernières migrations écrites (appliquées à la main dans Supabase)</summary>
+    <div class="tbl-scroll"><table><thead><tr><th>Dépôt</th><th>Migration</th></tr></thead><tbody>${
+      v.migrations_recentes.map((m) => `<tr><td>${esc(m.depot)}</td><td class="mono">${esc(m.nom)}</td></tr>`).join("")}</tbody></table></div></details>` : ""}`)}
 </section>
 
 <footer><p>Chiffres : compte de r\u00e9sultat du classeur de tr\u00e9sorerie et r\u00e9servations Beds24, recopi\u00e9s chaque nuit. Registre et projets : tenus \u00e0 chaque s\u00e9ance de travail. Les lectures sont gard\u00e9es 3 minutes.</p><a class="btn" href="/deconnexion">Se d\u00e9connecter</a></footer>

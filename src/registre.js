@@ -55,21 +55,32 @@ function decouper(contenu, marque) {
   return blocs;
 }
 
-/** `projets.md` → un projet par bloc `## Nom · Statut · Domaine · Responsable`. */
+/**
+ * `projets.md` → un projet par bloc `## Nom · Statut · Domaine · Responsable`.
+ * Les cases `- [ ] …` du bloc sont ses tâches programmées (`- [x]` : faites) ;
+ * une date `JJ/MM/AAAA` dans la ligne est gardée à part.
+ */
 export function lireProjets(md) {
   return decouper(md, "##").map((b, index) => {
     const [nom, statut, domaine, responsable] = b.titre.split("·").map((x) => x.trim());
     let echeance = "";
     let texte = "";
+    const taches = [];
     for (const ligne of b.corps) {
       const ech = ligne.match(/^\*\*Échéance\s*:\*\*\s*(.*)$/);
       if (ech) { echeance = ech[1].trim(); continue; }
+      const c = ligne.match(/^\s*[-*] \[( |x|X)\]\s+(.*)$/);
+      if (c) {
+        const date = (c[2].match(/\d{2}\/\d{2}\/\d{4}/) || [""])[0];
+        taches.push({ fait: c[1] !== " ", texte: c[2].trim(), date });
+        continue;
+      }
       if (ligne.trim()) texte += (texte ? " " : "") + ligne.trim();
     }
     return {
       nom, statut: statut || "", domaine: domaine || "",
       responsable: responsable && responsable !== "—" ? responsable : "",
-      echeance, texte,
+      echeance, texte, taches,
       fichier: "projets.md", index, debut: b.debut, fin: b.fin, brut: b.brut, titre: b.titre,
     };
   }).filter((p) => p.nom);
