@@ -18,7 +18,7 @@ import {
 } from "./sources.js";
 import { analyser } from "./analyse.js";
 import { pageTableau, pageEdition, pageDocuments, pageConnexion } from "./page.js";
-import { lireProjets, lireFaits, lirePrevisions, remplacerBloc, slugProjet, faitAvecProjet } from "./registre.js";
+import { lireProjets, lireFaits, lirePrevisions, remplacerBloc, slugProjet, faitAvecProjet, lireRecurrentes, basculerSemaine } from "./registre.js";
 
 const COOKIE = "kasbah_tdb";
 const DUREE_CACHE_MS = 3 * 60 * 1000;
@@ -86,6 +86,12 @@ export default {
     if (url.pathname === "/projet-du-fait") {
       if (associe) return new Response("Réservé à l'équipe", { status: 403 });
       return changerProjetDuFait(requete, env);
+    }
+
+    // Cocher ou décocher une semaine d'une tâche récurrente : réservé à l'équipe.
+    if (url.pathname === "/recurrente") {
+      if (associe) return new Response("Réservé à l'équipe", { status: 403 });
+      return cocherSemaine(requete, env);
     }
 
     // Ajouter ou retirer un document d'un projet : réservé à l'équipe.
@@ -196,6 +202,34 @@ async function changerProjetDuFait(requete, env) {
     return new Response(null, { status: 303, headers: { Location: "/#faits" } });
   } catch (e) {
     return html(pageConnexion({ titre: "Projet non changé", erreur: `${e.message || e} — rien n'a été écrit.`, bloque: true, retour: "/#faits" }), 409);
+  }
+}
+
+/**
+ * Coche ou décoche une semaine d'une tâche récurrente (`pilotage/recurrent.md`).
+ * Un commit par case ; le titre de la tâche sert de garde-fou si le fichier a bougé.
+ */
+async function cocherSemaine(requete, env) {
+  if (requete.method !== "POST") return new Response("Méthode refusée", { status: 405 });
+  const form = await requete.formData();
+  const index = Number(form.get("i") || -1);
+  const titre = String(form.get("titre") || "");
+  const lundi = String(form.get("lundi") || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(lundi) || new Date(lundi + "T12:00:00Z").getUTCDay() !== 1) {
+    return new Response("Semaine refusée", { status: 400 });
+  }
+  try {
+    const { contenu, sha } = await lireFichierRegistre(env, "recurrent.md");
+    const tache = lireRecurrentes(contenu).find((t) => t.index === index);
+    if (!tache || tache.titre !== titre) throw new Error("Le fichier a changé depuis l'affichage : recharge la page et recommence.");
+    const coche = !tache.faites.includes(lundi);
+    const jour = `${lundi.slice(8, 10)}/${lundi.slice(5, 7)}`;
+    await ecrireFichierRegistre(env, "recurrent.md", basculerSemaine(contenu, tache, lundi), sha,
+      `${coche ? "Coche" : "Décoche"} « ${tache.nom} », semaine du ${jour} (depuis le tableau de bord)`);
+    cache = null;
+    return new Response(null, { status: 303, headers: { Location: "/#recurrentes" } });
+  } catch (e) {
+    return html(pageConnexion({ titre: "Case non changée", erreur: `${e.message || e} — rien n'a été écrit.`, bloque: true, retour: "/#recurrentes" }), 409);
   }
 }
 

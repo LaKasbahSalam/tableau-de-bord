@@ -97,6 +97,23 @@ La fonction de vente échouait à chaque appel.
   // tresorerie : dépôt pas encore créé -> 404
 };
 
+// Les lundis des semaines d'avant (0 = cette semaine), au format du fichier.
+const lundi = (n) => {
+  const d = new Date(); d.setUTCHours(12, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7) - 7 * n);
+  const iso = d.toISOString().slice(0, 10);
+  return { iso, fr: `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` };
+};
+reponses["/repos/LaKasbahSalam/Kasbah-Analytique/contents/pilotage/recurrent.md"] = `# Tâches récurrentes
+
+## Vérifier les ventes de Repas
+
+**Depuis :** ${lundi(3).fr}
+**Fait :** ${lundi(3).fr}, ${lundi(1).fr}
+
+Rapprocher les achats de repas des fiches clients.
+`;
+
 const supabase = {
   genere_le: new Date().toISOString(),
   chiffres: {
@@ -564,6 +581,43 @@ if (prevTexte) {
   verifier(r.status === 303 && r.headers.get("Location") === "/" && ecritPrev.chemin.endsWith("pilotage/previsions.md")
     && ecritPrev.contenu.includes("**Lits :** 25") && ecritPrev.contenu.includes("## Premium") && /scénario/.test(ecritPrev.message),
     "corriger un scénario écrit un commit, sans toucher aux autres");
+}
+
+// --- Les tâches de chaque semaine : une ligne par tâche, une colonne par semaine
+{
+  const grille = (page.match(/<section id="recurrentes"[\s\S]*?<\/section>/) || [""])[0];
+  verifier(grille.includes("Vérifier les ventes de Repas"), "la tâche récurrente a sa ligne");
+  verifier((grille.match(/<th class="[^"]*">S\d+<small>/g) || []).length === 6, "six colonnes de semaines, numérotées comme les résumés");
+  verifier((grille.match(/class="case fait"/g) || []).length === 2, "les deux semaines faites sont cochées");
+  verifier((grille.match(/class="case manque"/g) || []).length === 1, "la semaine oubliée ressort en orange");
+  verifier((grille.match(/class="case avant"/g) || []).length === 2, "avant « Depuis », pas de case à cocher");
+  verifier(grille.includes('class="case en_cours"'), "la semaine en cours attend");
+  const grilleAssocie = (vueAssocie.match(/<section id="recurrentes"[\s\S]*?<\/section>/) || [""])[0];
+  verifier(grilleAssocie.includes("case fait") && !grilleAssocie.includes("/recurrente"), "l'associé voit la grille, sans pouvoir cocher");
+
+  const cocher = (lundiIso, cle = cookie, titre = "Vérifier les ventes de Repas") => {
+    const fc = new FormData();
+    fc.set("i", "0"); fc.set("titre", titre); fc.set("lundi", lundiIso);
+    return worker.fetch(new Request("https://t.dev/recurrente", { method: "POST", body: fc, headers: { Cookie: cle } }), env);
+  };
+  let avantRec = ecrits.length;
+  r = await cocher(lundi(0).iso);
+  const ecritRec = ecrits[ecrits.length - 1];
+  verifier(r.status === 303 && ecrits.length === avantRec + 1 && ecritRec.chemin.endsWith("pilotage/recurrent.md"), "cocher une case écrit un commit");
+  verifier(ecritRec.contenu.includes(`**Fait :** ${lundi(3).fr}, ${lundi(1).fr}, ${lundi(0).fr}
+`), "la semaine est ajoutée, dans l'ordre");
+  verifier(ecritRec.contenu.includes("Rapprocher les achats") && /^Coche « Vérifier les ventes de Repas », semaine du/.test(ecritRec.message), "le reste est intact, le commit dit quoi");
+  r = await cocher(lundi(1).iso);
+  verifier(r.status === 303 && ecrits[ecrits.length - 1].contenu.includes(`**Fait :** ${lundi(3).fr}
+`) && /^Décoche/.test(ecrits[ecrits.length - 1].message), "recliquer une case cochée la décoche");
+  avantRec = ecrits.length;
+  r = await cocher(lundi(0).iso, cookieAssocie);
+  verifier(r.status === 403 && ecrits.length === avantRec, "l'associé ne peut pas cocher");
+  r = await cocher(lundi(0).iso, cookie, "une tâche renommée");
+  verifier(r.status === 409 && ecrits.length === avantRec, "une tâche qui a bougé n'est pas écrasée");
+  const mardi = new Date(lundi(0).iso + "T12:00:00Z"); mardi.setUTCDate(mardi.getUTCDate() + 1);
+  r = await cocher(mardi.toISOString().slice(0, 10));
+  verifier(r.status === 400 && ecrits.length === avantRec, "seul un lundi est accepté");
 }
 
 if (process.argv[2]) fs.writeFileSync(process.argv[2], page);

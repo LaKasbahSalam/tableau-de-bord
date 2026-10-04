@@ -111,11 +111,12 @@ async function lireRegistre(env) {
     .filter((f) => f.type === "file" && /^\d{4}-\d{2}\.md$/.test(f.name))
     .map((f) => f.name).sort().reverse().slice(0, 4); // 4 derniers mois
 
-  const [projets, technique, previsions, semaine, documents, ...contenus] = await Promise.all([
+  const [projets, technique, previsions, semaine, recurrent, documents, ...contenus] = await Promise.all([
     gh(`${base}/projets.md`, true),
     gh(`${base}/technique.md`, true),
     gh(`${base}/previsions.md`, true),
     gh(`${base}/semaine.md`, true),
+    gh(`${base}/recurrent.md`, true),
     listerTousDocuments(env),
     ...mois.map((n) => gh(`${base}/${n}`, true)),
   ]);
@@ -126,6 +127,7 @@ async function lireRegistre(env) {
       technique: technique || "",
       previsions: previsions || "",
       semaine: semaine || "",
+      recurrent: recurrent || "",
       documents,
       mois: mois.map((nom, i) => ({ nom, contenu: contenus[i] || "" })).filter((f) => f.contenu),
     },
@@ -161,7 +163,7 @@ async function lireSupabase(env) {
 // ------------------------------------------------- Écrire dans le registre
 
 const DEPOT_REGISTRE = "Kasbah-Analytique";
-const NOM_VALIDE = /^(projets|technique|previsions|\d{4}-\d{2})\.md$/;
+const NOM_VALIDE = /^(projets|technique|previsions|recurrent|\d{4}-\d{2})\.md$/;
 
 function entetesGithub(env, brut = false) {
   return {

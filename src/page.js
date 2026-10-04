@@ -170,6 +170,18 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 .doc-repli .tbl-scroll{border:0;border-radius:0}
 .semaine{border-left:4px solid var(--accent)}
 .semaine h4{font-size:15px;margin:18px 0 6px}
+.recur td,.recur th{text-align:center;vertical-align:middle}
+.recur td:first-child,.recur th:first-child{text-align:left;min-width:220px}
+.recur th small{display:block;font-size:10.5px;letter-spacing:0;text-transform:none}
+.recur th.encours{color:var(--accent)}
+.recur form{margin:0}
+.case{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:7px;border:1.5px solid var(--line);background:var(--bg);color:var(--surface);font:600 16px/1 var(--body);padding:0}
+button.case{cursor:pointer}
+button.case:hover{border-color:var(--accent)}
+.case.fait{background:var(--ok);border-color:var(--ok)}
+.case.manque{border-color:var(--warn);background:var(--warn-soft)}
+.case.en_cours{border-color:var(--accent)}
+.case.avant{border-style:dashed;opacity:.45}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px}
 .chart svg{width:100%;height:auto;display:block}
 .chart text{font-family:var(--mono);font-size:11px;fill:var(--ink-3)}
@@ -323,6 +335,30 @@ function semaineHtml(texte) {
     <article class="doc">${rendreMarkdown(s.corps)}</article></details>`).join("");
 }
 
+/**
+ * Les tâches récurrentes (`pilotage/recurrent.md`) : une ligne par tâche,
+ * une colonne par semaine. L'équipe coche une case (un commit) ; l'associé
+ * voit la même grille, sans pouvoir la changer.
+ */
+function recurrentesHtml(r, peutCocher) {
+  if (!r || !r.ok) return `<div class="panne">Le registre n'est pas lu : les tâches récurrentes sont dans <span class="mono">pilotage/recurrent.md</span>.</div>`;
+  if (!r.lignes.length) return `<div class="panne">Aucune tâche récurrente : elles s'écrivent dans <span class="mono">pilotage/recurrent.md</span> du dépôt Kasbah-Analytique.</div>`;
+  const AIDE = { fait: "Faite", manque: "Pas faite", en_cours: "À faire cette semaine", avant: "La tâche n'existait pas encore" };
+  const caseHtml = (t, c) => {
+    const signe = c.etat === "fait" ? "✓" : "";
+    const titre = `${AIDE[c.etat]} · semaine du ${c.lundi.slice(8, 10)}/${c.lundi.slice(5, 7)}`;
+    if (!peutCocher || c.etat === "avant") return `<span class="case ${c.etat}" title="${esc(titre)}" aria-label="${esc(titre)}">${signe}</span>`;
+    return `<form method="post" action="/recurrente">
+      <input type="hidden" name="i" value="${t.index}"><input type="hidden" name="titre" value="${esc(t.titre)}"><input type="hidden" name="lundi" value="${esc(c.lundi)}">
+      <button type="submit" class="case ${c.etat}" title="${esc(titre)} · cliquer pour ${c.etat === "fait" ? "décocher" : "cocher"}" aria-label="${esc(titre)}">${signe}</button></form>`;
+  };
+  return `<div class="tbl-scroll"><table class="recur">
+    <thead><tr><th>Tâche</th>${r.semaines.map((s) => `<th class="${s.en_cours ? "encours" : ""}">S${s.numero}<small>${esc(s.du)} – ${esc(s.au)}</small></th>`).join("")}</tr></thead>
+    <tbody>${r.lignes.map((t) => `<tr>
+      <td><b>${esc(t.nom)}</b>${t.texte ? `<br><small>${md(t.texte.slice(0, 160))}${t.texte.length > 160 ? "…" : ""}</small>` : ""}</td>
+      ${t.cases.map((c) => `<td>${caseHtml(t, c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+
 function occupationHtml(occ) {
   if (!occ || !occ.length) return "";
   const W = 520, H = 230, base = 190, haut = 10, g = 40, d = 510;
@@ -416,6 +452,7 @@ export function pageTableau(v, lu, associe = false) {
   const sommaire = [
     ["chiffres", "Les chiffres"],
     ["semaine", "La semaine"],
+    ["recurrentes", "Chaque semaine"],
     ["action", "\u00c0 faire"],
     ["faits", "Ce qui s'est fait"],
     ["nuit", "Les t\u00e2ches automatiques"],
@@ -450,6 +487,11 @@ export function pageTableau(v, lu, associe = false) {
 <section id="semaine" aria-labelledby="h-sem">
   <div class="section-head"><h2 id="h-sem">Résumés de la semaine</h2><p>Cliquez sur une semaine pour la déplier · <span class="mono">pilotage/semaine.md</span></p></div>
   ${semaineHtml(v.semaine)}
+</section>
+
+<section id="recurrentes" aria-labelledby="h-rec">
+  <div class="section-head"><h2 id="h-rec">Les tâches de chaque semaine</h2><p>Une colonne par semaine, comme les résumés · ${associe ? "" : "cliquer une case la coche · "}<span class="mono">pilotage/recurrent.md</span></p></div>
+  ${recurrentesHtml(v.recurrentes, !associe)}
 </section>
 
 <section id="action" aria-labelledby="h-att">

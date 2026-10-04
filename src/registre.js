@@ -238,3 +238,64 @@ export function lirePrevisions(md) {
 }
 
 const fr = (n) => Number(n).toLocaleString("fr-FR", { maximumFractionDigits: 2 });
+
+// ---------------------------------------------------------------- Tâches récurrentes
+
+/** Le lundi de la semaine d'un jour ISO (les semaines vont du lundi au dimanche, comme `semaine.md`). */
+export function lundiDe(jour) {
+  const d = new Date(jour + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
+/** Le numéro de semaine ISO, celui des titres « # Semaine 40 » de `semaine.md`. */
+export function numeroSemaine(lundi) {
+  const jeudi = new Date(lundi + "T12:00:00Z");
+  jeudi.setUTCDate(jeudi.getUTCDate() + 3);
+  const debutAnnee = new Date(Date.UTC(jeudi.getUTCFullYear(), 0, 1, 12));
+  return 1 + Math.floor((jeudi - debutAnnee) / (7 * 864e5));
+}
+
+const frDepuisIso = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+
+/**
+ * `recurrent.md` → une tâche par bloc `## Nom`. Deux lignes comptent :
+ * `**Depuis :** JJ/MM/AAAA` et `**Fait :** JJ/MM/AAAA, …` (les lundis des
+ * semaines cochées). Le reste est la description.
+ */
+export function lireRecurrentes(md) {
+  return decouper(md, "##").map((b, index) => {
+    let depuis = "";
+    let faites = [];
+    let texte = "";
+    for (const ligne of b.corps) {
+      const d = ligne.match(/^\*\*Depuis\s*:\*\*\s*(.*)$/);
+      if (d) { depuis = isoDepuisFr(d[1].trim()) || ""; continue; }
+      const f = ligne.match(/^\*\*Fait\s*:\*\*\s*(.*)$/);
+      if (f) { faites = f[1].split(",").map((x) => isoDepuisFr(x.trim())).filter(Boolean).map(lundiDe); continue; }
+      if (ligne.trim()) texte += (texte ? " " : "") + ligne.trim();
+    }
+    return {
+      nom: b.titre, depuis: depuis ? lundiDe(depuis) : "", faites: [...new Set(faites)].sort(), texte,
+      fichier: "recurrent.md", index, debut: b.debut, fin: b.fin, brut: b.brut, titre: b.titre,
+    };
+  }).filter((t) => t.nom);
+}
+
+/**
+ * Coche ou décoche une semaine d'une tâche : réécrit sa ligne `**Fait :**`
+ * (créée si elle manque, juste sous le titre), lundis triés.
+ */
+export function basculerSemaine(contenu, tache, lundi) {
+  const faites = new Set(tache.faites);
+  if (faites.has(lundi)) faites.delete(lundi); else faites.add(lundi);
+  const ligneFait = `**Fait :** ${[...faites].sort().map(frDepuisIso).join(", ")}`.trimEnd();
+  const lignes = tache.brut.split(/\r?\n/);
+  const i = lignes.findIndex((l) => /^\*\*Fait\s*:\*\*/.test(l));
+  if (i >= 0) lignes[i] = ligneFait;
+  else {
+    const j = lignes.findIndex((l) => /^\*\*Depuis\s*:\*\*/.test(l));
+    lignes.splice(j >= 0 ? j + 1 : 1, 0, ligneFait);
+  }
+  return remplacerBloc(contenu, { debut: tache.debut, fin: tache.fin, titreAttendu: tache.titre }, lignes.join("\n"));
+}
