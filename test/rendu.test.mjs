@@ -82,7 +82,13 @@ Schéma : [le document](https://drive.google.com/file/d/abc/view) · piège : [c
 La fonction de vente échouait à chaque appel.
 `,
   "/repos/LaKasbahSalam/Kasbah-Analytique/contents/pilotage/previsions.md": lire("Kasbah-Analytique/pilotage/previsions.md"),
-  "/repos/LaKasbahSalam/Kasbah-Analytique/contents/pilotage/semaine.md": `# Semaine 39 — du 21 au 27/09/2026
+  "/repos/LaKasbahSalam/Kasbah-Analytique/contents/pilotage/semaine.md": `# Semaine 40 — du 28/09 au 04/10/2026
+
+## Synthèse générale
+
+- **Les courses** arrivent dans la V16.
+
+# Semaine 39 — du 21 au 27/09/2026
 
 ## Synthèse générale
 
@@ -502,11 +508,15 @@ verifier(pageLienRemplace.includes("https://drive.google.com/nouveau") && !pageL
   "le lien est remplacé, pas dupliqué");
 
 // --- Le résumé de la semaine (pilotage/semaine.md), à la place des prévisions
-verifier(page.indexOf("Résumé de la semaine dernière") > page.indexOf("Les chiffres") && page.indexOf("Résumé de la semaine dernière") < page.indexOf("Ce qui demande une action"),
-  "le résumé de la semaine vient juste après les chiffres");
-verifier(page.includes("Semaine 39 — du 21 au 27/09/2026") && page.includes("<h3>Synthèse générale</h3>") && page.includes("<b>Le snack</b> réussit"),
-  "le résumé est rendu, son titre en sous-titre");
-verifier(vueAssocie.includes("Résumé de la semaine dernière"), "l'associé voit aussi le résumé");
+verifier(page.indexOf("Résumés de la semaine") > page.indexOf("Les chiffres") && page.indexOf("Résumés de la semaine") < page.indexOf("Ce qui demande une action"),
+  "les résumés de la semaine viennent juste après les chiffres");
+verifier(page.includes("<summary>Semaine 40 — du 28/09 au 04/10/2026</summary>") && page.includes("<summary>Semaine 39 — du 21 au 27/09/2026</summary>"),
+  "chaque semaine a son titre cliquable");
+verifier(page.indexOf("<summary>Semaine 40") < page.indexOf("<summary>Semaine 39"), "la semaine la plus récente en haut");
+verifier(!/<details class="doc-repli semaine" open/.test(page), "les semaines sont repliées par défaut");
+verifier(page.includes("<h3>Synthèse générale</h3>") && page.includes("<b>Le snack</b> réussit") && page.includes("<b>Les courses</b> arrivent"),
+  "le contenu de chaque semaine est rendu");
+verifier(vueAssocie.includes("<summary>Semaine 40"), "l'associé voit aussi les résumés");
 
 // --- Les prévisions (pilotage/previsions.md) : plus affichées, mais toujours lues et modifiables
 const { lirePrevisions } = await import("../src/registre.js");

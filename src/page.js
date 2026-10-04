@@ -292,11 +292,25 @@ function chiffresHtml(ch) {
 </section>`;
 }
 
-/** Le résumé de la semaine (`pilotage/semaine.md`) : sa première ligne sert de sous-titre. */
-function semaineHtml(texte) {
+/**
+ * Les résumés de la semaine (`pilotage/semaine.md`) : chaque titre `# Semaine NN`
+ * ouvre un résumé, le plus récent en haut. Chacun est replié, son titre
+ * toujours visible : on clique pour le déplier.
+ */
+export function decouperSemaines(texte) {
   const brut = String(texte || "").trim();
-  if (!brut) return `<div class="panne">Pas encore de résumé : il s'écrit dans <span class="mono">pilotage/semaine.md</span> du dépôt Kasbah-Analytique.</div>`;
-  return `<article class="doc semaine">${rendreMarkdown(sansPremierTitre(brut))}</article>`;
+  if (!brut) return [];
+  return brut.split(/^(?=# )/m).map((bloc) => bloc.trim()).filter(Boolean).map((bloc) => {
+    const titre = bloc.startsWith("# ") ? bloc.split(String.fromCharCode(10))[0].slice(2).trim() : "Résumé de la semaine";
+    return { titre, corps: sansPremierTitre(bloc) };
+  });
+}
+
+function semaineHtml(texte) {
+  const semaines = decouperSemaines(texte);
+  if (!semaines.length) return `<div class="panne">Pas encore de résumé : il s'écrit dans <span class="mono">pilotage/semaine.md</span> du dépôt Kasbah-Analytique.</div>`;
+  return semaines.map((s) => `<details class="doc-repli semaine"><summary>${esc(s.titre)}</summary>
+    <article class="doc">${rendreMarkdown(s.corps)}</article></details>`).join("");
 }
 
 function occupationHtml(occ) {
@@ -424,7 +438,7 @@ export function pageTableau(v, lu, associe = false) {
 </section>
 
 <section id="semaine" aria-labelledby="h-sem">
-  <div class="section-head"><h2 id="h-sem">Résumé de la semaine dernière</h2><p>${esc((String(v.semaine || "").match(/^#\s+(.+)$/m) || [])[1] || "")} · <span class="mono">pilotage/semaine.md</span></p></div>
+  <div class="section-head"><h2 id="h-sem">Résumés de la semaine</h2><p>Cliquez sur une semaine pour la déplier · <span class="mono">pilotage/semaine.md</span></p></div>
   ${semaineHtml(v.semaine)}
 </section>
 
