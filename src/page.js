@@ -255,31 +255,41 @@ const moisLong = (iso) => (iso ? `${MOIS_FR[Number(iso.slice(5, 7)) - 1]} ${iso.
 const pourcent = (v) => (v == null ? "—" : `${(Number(v) * 100).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`);
 
 /** La bande du haut : cinq indicateurs, chacun sur l'exercice et sur le mois. */
-function chiffresHtml(ch) {
+export function chiffresHtml(ch) {
   if (!ch || (!ch.exercice && !ch.mois)) {
     return `<section aria-labelledby="h-chiffres">
       <div class="section-head"><h2 id="h-chiffres">Les chiffres</h2></div>
       <div class="panne">Pas encore de chiffres : ils viennent de Kasbah Analytics, qui n'est pas lu.</div></section>`;
   }
   const ex = ch.exercice || {}, mo = ch.mois || {};
+  // Le mois passé n'existe que si la fonction Supabase le rend (migration
+  // du 04/10/2026) ; sans lui, la tuile garde ses deux lignes.
+  const mp = ch.mois_precedent && ch.mois_precedent_libelle ? ch.mois_precedent : null;
   const moisNom = ch.mois_libelle ? MOIS_FR[Number(ch.mois_libelle.slice(5, 7)) - 1] : "mois en cours";
+  const mpNom = mp ? `${MOIS_FR[Number(ch.mois_precedent_libelle.slice(5, 7)) - 1]} (terminé)` : "";
   const exNom = `Exercice ${ch.exercice_libelle || "en cours"}`;
-  // Une tuile = un indicateur ; deux lignes, l'exercice puis le mois. L'ADR
-  // change de source selon la période (voir docs/LOOKER_STUDIO.md).
+  // Une tuile = un indicateur ; trois lignes : l'exercice, le mois passé,
+  // le mois en cours. L'ADR change de source selon la période (voir
+  // docs/LOOKER_STUDIO.md) : encaissé sur un mois terminé, sinon facturé.
+  const ligne = (champ, format) => [
+    [exNom, format(ex[champ])],
+    ...(mp ? [[mpNom, format(mp[champ])]] : []),
+    [`${moisNom} (en cours)`, format(mo[champ])],
+  ];
+  const adrPasse = mp ? (mp.adr_encaisse != null
+    ? [[`${mpNom} · encaissé`, dh(mp.adr_encaisse)]]
+    : [[`${mpNom} · facturé`, dh(mp.adr_facture)]]) : [];
   const tuiles = [
-    { titre: "Revenu", aide: "Total des produits du CdR",
-      lignes: [[exNom, dh(ex.revenu)], [moisNom, dh(mo.revenu)]] },
-    { titre: "Résultat net", aide: "Ligne « RÉSULTAT NET » du CdR",
-      lignes: [[exNom, dh(ex.resultat_net)], [moisNom, dh(mo.resultat_net)]] },
-    { titre: "Marge restauration", aide: "Ventes moins achats : breakfast, repas, snack",
-      lignes: [[exNom, dh(ex.marge_restauration)], [moisNom, dh(mo.marge_restauration)]] },
+    { titre: "Revenu", aide: "Total des produits du CdR", lignes: ligne("revenu", dh) },
+    { titre: "Résultat net", aide: "Ligne « RÉSULTAT NET » du CdR", lignes: ligne("resultat_net", dh) },
+    { titre: "Marge restauration", aide: "Ventes moins achats : breakfast, repas, snack", lignes: ligne("marge_restauration", dh) },
     { titre: "ADR", aide: "Encaissé (CdR) sur les mois terminés ; facturé (appli) pour le mois en cours, seul juste avant la fin du mois",
       lignes: [
         [`${exNom} · encaissé`, dh(ex.adr_encaisse)],
-        [`${moisNom} · facturé`, dh(mo.adr_facture)],
+        ...adrPasse,
+        [`${moisNom} (en cours) · facturé`, dh(mo.adr_facture)],
       ] },
-    { titre: "Taux d'occupation", aide: "Places vendues sur 17 places",
-      lignes: [[exNom, pourcent(ex.taux_occupation)], [moisNom, pourcent(mo.taux_occupation)]] },
+    { titre: "Taux d'occupation", aide: "Places vendues sur 17 places", lignes: ligne("taux_occupation", pourcent) },
   ];
   return `<section aria-labelledby="h-chiffres">
   <div class="section-head"><h2 id="h-chiffres">Les chiffres</h2>

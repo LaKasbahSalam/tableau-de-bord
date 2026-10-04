@@ -110,6 +110,11 @@ const supabase = {
       places_vendues: 100, capacite: 510, taux_occupation: 0.1961,
       adr_encaisse: null, adr_encaisse_mois: 0, adr_facture: 220, adr_facture_mois: 1,
       mois_comptes: 1, depuis: "2026-09-01", jusqua: "2026-09-01" },
+    mois_precedent_libelle: "2026-09",
+    mois_precedent: { revenu: 45000, resultat_net: 7000, marge_restauration: 3300, ventes_restauration: 9000,
+      places_vendues: 250, capacite: 510, taux_occupation: 0.4902,
+      adr_encaisse: 168.4, adr_encaisse_mois: 1, adr_facture: 175, adr_facture_mois: 1,
+      mois_comptes: 1, depuis: "2026-09-01", jusqua: "2026-09-01" },
   },
   sources: [
     { source: "beds24", derniere_reussite: il_y_a(8), derniere_tentative: il_y_a(8), statut: "ok", lignes: 298 },
@@ -237,6 +242,18 @@ verifier(nombres.includes("142 DH") && nombres.includes("220 DH"), "ADR : encais
 verifier(/encaissé<\/dt>/.test(page) && /facturé<\/dt>/.test(page), "chaque ADR dit d'où il vient");
 verifier(page.includes("35,2 %") && page.includes("19,6 %"), "taux d'occupation sur les deux périodes");
 verifier(page.includes("Exercice 2026-2027"), "libellé de l'exercice");
+verifier(page.includes("septembre (terminé)") && nombres.includes("45 000 DH") && nombres.includes("7 000 DH")
+  && nombres.includes("3 300 DH") && page.includes("49 %"), "le mois passé a sa ligne dans chaque tuile");
+verifier(page.includes("septembre (terminé) · encaissé</dt>") && nombres.includes("168 DH"), "ADR du mois passé : l'encaissé");
+const tuileRevenu = (page.match(/<h3>Revenu<\/h3>[\s\S]*?<\/dl>/) || [""])[0];
+verifier(tuileRevenu.indexOf("Exercice") < tuileRevenu.indexOf("septembre") && tuileRevenu.indexOf("septembre") < tuileRevenu.indexOf("(en cours)"),
+  "ordre : exercice, mois passé, mois en cours");
+{
+  const { mois_precedent, mois_precedent_libelle, ...sansMp } = supabase.chiffres;
+  const { chiffresHtml } = await import("../src/page.js");
+  const html = chiffresHtml(sansMp);
+  verifier(!html.includes("(terminé)") && html.includes("(en cours)"), "sans la migration : la tuile garde deux lignes");
+}
 verifier(page.includes('<a href="https://drive.google.com/file/d/abc/view" target="_blank" rel="noopener">le document</a>'), "registre : un lien https devient cliquable");
 verifier(!page.includes('href="javascript'), "registre : un lien javascript: reste du texte");
 verifier(page.includes('<span class="pill p-test">en test</span>') && !page.includes("**Statut**"), "registre : « Statut » devient une pastille orange");
