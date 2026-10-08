@@ -253,7 +253,7 @@ r = await worker.fetch(new Request("https://t.dev/?rafraichir=1", { headers: { C
 const page = await r.text();
 verifier(r.status === 200, "page rendue");
 verifier(/Envoi du CdR[\s\S]{0,400}En erreur/.test(page), "CdR en erreur signalé");
-verifier(page.includes("Solde absent à 21h"), "synchro 20h : solde absent détecté");
+verifier(page.includes("Solde absent du message"), "synchro de 14h : solde absent détecté");
 verifier(page.indexOf("Les chiffres") < page.indexOf("Ce qui demande une action"), "les chiffres sont tout en haut");
 const nombres = page.replace(/[  ]/g, " ");
 verifier(nombres.includes("110 000 DH") && nombres.includes("20 000 DH"), "revenu : exercice et mois en cours");

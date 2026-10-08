@@ -130,11 +130,11 @@ const guideRappel = (quand) => ({
 const GUIDES_FLUX = {
   "Rappel du matin": guideRappel("8h"),
   "Synchro caisse": {
-    faire: "Ouvrir le classeur V16 : les lignes de caisse du jour sont-elles arrivées ? Sinon, Extensions → Apps Script → Exécutions : l'exécution de 20h et son erreur.",
-    fini: "Le message Telegram de 21h porte de nouveau le solde.",
-    verifier: "Si les lignes du jour sont dans la caisse de V16, la synchro a tourné : c'est seulement le message de 21h qui n'a pas lu le solde.",
+    faire: "Ouvrir le classeur V16 : les lignes de caisse du jour sont-elles arrivées ? Sinon, Extensions → Apps Script → Exécutions : l'exécution `syncCloture` de 14h (affichée 13h, en heure UTC) et son erreur. Menu Caisse → Synchroniser maintenant la rattrape, et le message part aussitôt.",
+    fini: "Le message « On peut compter la caisse » porte le solde du jour.",
+    verifier: "Si les lignes du jour sont dans la caisse de V16, la synchro a tourné : c'est seulement le message qui n'a pas lu le solde.",
   },
-  "« Compter la caisse »": guideRappel("21h"),
+  "« Compter la caisse »": guideRappel("14h (16h si la synchro a manqué)"),
   "Envoi du CdR": {
     faire: "Dans le classeur V16 : Extensions → Apps Script → Exécutions, l'envoi de 22h et son erreur. Une fois la cause réglée, relancer la même fonction depuis cet écran.",
     fini: "La ligne `v16` de `analytique.fraicheur` a une réussite d'aujourd'hui.",
@@ -174,10 +174,10 @@ export function analyser({ github, registre, supabase }, maintenant) {
   const flux = [
     { heure: "08:00", titre: "Rappel du matin", desc: "Telegram : départs non payés du jour et du lendemain, plats du jour.",
       ...(sb ? voyantRappel(rappels, "matin", attendu, "departs", copieOk) : inconnu) },
-    { heure: "20:00", titre: "Synchro caisse", desc: "La V16 récupère la caisse de l'appli. Se lit dans le message de 21h, qui porte le solde.",
+    { heure: "14:00", titre: "Synchro caisse", desc: "La V16 récupère la caisse de l'appli et relève le solde. Se lit dans le message qui suit, qui porte le solde.",
       ...(sb ? (() => { const v = voyantRappel(rappels, "soir", attendu, "solde", copieOk);
-        return v.niveau === "warn" ? { ...v, etat: "Solde absent à 21h" } : v; })() : inconnu) },
-    { heure: "21:00", titre: "« Compter la caisse »", desc: "Message Telegram avec le relevé du classeur.",
+        return v.niveau === "warn" ? { ...v, etat: "Solde absent du message" } : v; })() : inconnu) },
+    { heure: "14:00", titre: "« Compter la caisse »", desc: "Message Telegram avec le relevé du classeur, juste après la synchro (16h si elle a manqué).",
       ...(sb ? voyantRappel(rappels, "soir", attendu, null, copieOk) : inconnu) },
     { heure: "22:00", titre: "Envoi du CdR", desc: "La V16 envoie son compte de résultat à l'analytique.",
       ...(sb ? voyantSource(sources.v16, maintenant) : inconnu) },
