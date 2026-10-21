@@ -388,7 +388,7 @@ function recurrentesHtml(r, peutCocher) {
       <button type="submit" class="case ${c.etat}" title="${esc(titre)} · cliquer pour ${c.etat === "fait" ? "décocher" : "cocher"}" aria-label="${esc(titre)}">${signe}</button></form>`;
   };
   return `<div class="tbl-scroll"><table class="recur">
-    <thead><tr><th>Tâche</th>${r.semaines.map((s) => `<th class="${s.en_cours ? "encours" : ""}">S${s.numero}<small>${esc(s.du)} – ${esc(s.au)}</small></th>`).join("")}</tr></thead>
+    <thead><tr><th>Tâche</th>${r.semaines.map((s) => `<th class="${s.en_cours ? "encours" : s.passee ? "passee" : ""}">S${s.numero}<small>${esc(s.du)} – ${esc(s.au)}</small><small>${s.en_cours ? "cette semaine" : s.passee ? "dernière" : ""}</small></th>`).join("")}</tr></thead>
     <tbody>${r.lignes.map((t) => `<tr>
       <td><b>${esc(t.nom)}</b>${t.texte ? `<br><small>${md(t.texte.slice(0, 160))}${t.texte.length > 160 ? "…" : ""}</small>` : ""}</td>
       ${t.cases.map((c) => `<td>${caseHtml(t, c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
@@ -547,7 +547,7 @@ export function pageTableau(v, lu, associe = false) {
 </section>
 
 <section id="recurrentes" aria-labelledby="h-rec">
-  ${pli("h-rec", "Les tâches de chaque semaine", `Cette semaine, puis les quatre suivantes · ${associe ? "" : "cliquer une case la coche · "}<span class="mono">pilotage/recurrent.md</span>`,
+  ${pli("h-rec", "Les tâches de chaque semaine", `La semaine dernière, cette semaine, puis les quatre suivantes · ${associe ? "" : "cliquer une case la coche · "}<span class="mono">pilotage/recurrent.md</span>`,
     recurrentesHtml(v.recurrentes, !associe))}
 </section>
 

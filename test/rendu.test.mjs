@@ -647,12 +647,13 @@ if (prevTexte) {
   const grille = (page.match(/<section id="recurrentes"[\s\S]*?<\/section>/) || [""])[0];
   verifier(grille.includes("Vérifier les ventes de Repas"), "la tâche récurrente a sa ligne");
   const entetes = grille.match(/<th class="[^"]*">S\d+<small>/g) || [];
-  verifier(entetes.length === 5, "cinq colonnes de semaines, numérotées comme les résumés");
-  verifier(entetes[0].includes("encours"), "la première colonne est cette semaine, les quatre suivantes sont à venir");
-  verifier((grille.match(/class="case fait"/g) || []).length === 1, "une semaine cochée d'avance reste cochée");
+  verifier(entetes.length === 6, "six colonnes de semaines, numérotées comme les résumés");
+  verifier(entetes[0].includes("passee") && entetes[1].includes("encours"), "la semaine dernière d'abord, puis cette semaine, puis les quatre à venir");
+  verifier(grille.includes("dernière</small>") && grille.includes("cette semaine</small>"), "les deux semaines sont nommées en toutes lettres");
+  verifier((grille.match(/class="case fait"/g) || []).length === 2, "la semaine dernière faite et la semaine cochée d'avance sont cochées");
   verifier((grille.match(/class="case a_venir"/g) || []).length === 6, "les semaines à venir attendent, sans orange");
-  verifier(!grille.includes("case manque"), "rien de passé n'est affiché");
-  verifier((grille.match(/class="case avant"/g) || []).length === 2, "avant « Depuis », pas de case à cocher");
+  verifier(!grille.includes("case manque"), "la semaine dernière a été faite : pas d'orange");
+  verifier((grille.match(/class="case avant"/g) || []).length === 3, "avant « Depuis », pas de case à cocher");
   verifier((grille.match(/class="case en_cours"/g) || []).length === 1, "la semaine en cours attend");
   const grilleAssocie = (vueAssocie.match(/<section id="recurrentes"[\s\S]*?<\/section>/) || [""])[0];
   verifier(grilleAssocie.includes("case fait") && !grilleAssocie.includes("/recurrente"), "l'associé voit la grille, sans pouvoir cocher");
