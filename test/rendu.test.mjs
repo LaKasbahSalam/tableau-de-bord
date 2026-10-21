@@ -721,11 +721,14 @@ if (prevTexte) {
 
   // --- Un commentaire par semaine
   verifier(grille.includes("<li><b>S") && grille.includes("Fait, mais la facture du boucher manque</li>"), "le commentaire de la semaine dernière s'affiche en clair sous la tâche");
-  verifier(!grille.includes("</b> Prévoir le boucher</li>") && grille.includes("· Prévoir le boucher"), "celui d'une semaine à venir se lit au survol de sa case");
-  verifier((grille.match(/case [a-z_]+ annotee/g) || []).length === 2, "un point sur chaque case commentée");
-  verifier((grille.match(/action="\/recurrente\/note"/g) || []).length === 2, "deux formulaires : semaine dernière et cette semaine, pour la seule tâche déjà commencée");
-  verifier(/<textarea[^>]*name="texte"[^>]*>Fait, mais la facture du boucher manque<\/textarea>/.test(grille), "le formulaire reprend le commentaire existant");
-  verifier(grilleAssocie.includes("Fait, mais la facture du boucher manque") && !grilleAssocie.includes("/recurrente/note"), "l'associé lit les commentaires, sans pouvoir les écrire");
+  verifier(grille.includes("</b> Prévoir le boucher</li>") && grille.includes("· Prévoir le boucher"), "celui d'une semaine à venir aussi, et au survol de sa case");
+  verifier((grille.match(/class="bulle pleine"/g) || []).length === 2 && (grille.match(/>✎<\/button>/g) || []).length === 7, "une bulle sous chaque case : 💬 si commentée, ✎ sinon");
+  verifier((grille.match(/<div popover id="note-/g) || []).length === 9 && (grille.match(/action="\/recurrente\/note"/g) || []).length === 9,
+    "une fenêtre par semaine ouverte (6 + 3), aucune avant « Depuis »");
+  verifier(/popovertarget="note-0-[\d-]+"[\s\S]*?<div popover id="note-0-/.test(grille) && grille.includes('popovertargetaction="hide"'), "la bulle ouvre sa fenêtre, Annuler la ferme, sans script");
+  verifier(/<textarea[^>]*name="texte"[^>]*autofocus[^>]*>Fait, mais la facture du boucher manque<\/textarea>/.test(grille), "la fenêtre reprend le commentaire existant, prête à écrire");
+  verifier(grilleAssocie.includes("Fait, mais la facture du boucher manque") && !grilleAssocie.includes("/recurrente/note") && !grilleAssocie.includes("popover"),
+    "l'associé lit les commentaires, sans pouvoir les écrire");
 
   const noter = (lundiIso, texte, cle = cookie) => {
     const fc = new FormData();
@@ -736,6 +739,7 @@ if (prevTexte) {
   r = await noter(lundi(0).iso, "Fait le mardi\navec Ayoub");
   let ecritNote = ecrits[ecrits.length - 1];
   verifier(r.status === 303 && ecrits.length === avantRec + 1 && ecritNote.chemin.endsWith("pilotage/recurrent.md"), "commenter une semaine écrit un commit");
+  verifier(r.headers.get("Location") === "/#rec-0", "et ramène sur la ligne de la tâche");
   verifier(ecritNote.contenu.includes(`**Note ${lundi(1).fr} :** Fait, mais la facture du boucher manque
 **Note ${lundi(0).fr} :** Fait le mardi avec Ayoub
 **Note ${lundi(-1).fr} :** Prévoir le boucher

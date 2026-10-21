@@ -247,17 +247,24 @@ button.case:hover{border-color:var(--accent)}
 .case.en_cours{border-color:var(--accent)}
 .case.a_venir{opacity:.7}
 .case.avant{border-style:dashed;opacity:.45}
-.case.annotee{position:relative}
-.case.annotee::after{content:"";position:absolute;top:-4px;right:-4px;width:9px;height:9px;border-radius:50%;background:var(--accent);border:2px solid var(--surface)}
+.recur td .semaine-cell{display:inline-grid;justify-items:center;gap:3px}
+.bulle{font:600 12px/1 var(--body);min-width:22px;height:20px;padding:0 5px;border-radius:10px;border:1px dashed var(--line);background:transparent;color:var(--ink-3);cursor:pointer}
+.bulle:hover{border-color:var(--accent);color:var(--accent)}
+.bulle.pleine{border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent)}
+span.bulle{cursor:help}
 .notes-sem{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:3px;font-size:12.5px;color:var(--ink-2);max-width:46ch}
 .notes-sem b{font-family:var(--mono);font-weight:500;font-size:11.5px;color:var(--ink-3)}
-.commenter{margin-top:6px;font-size:12.5px}
-.commenter summary{cursor:pointer;color:var(--accent);font-family:var(--mono);font-size:11.5px;list-style:none}
-.commenter summary::-webkit-details-marker{display:none}
-.commenter form{display:grid;gap:6px;margin-top:6px;max-width:46ch}
-.commenter label{font-size:12px;color:var(--ink-3)}
-.commenter textarea{font:inherit;font-size:13px;width:100%;min-height:52px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);resize:vertical}
-.commenter button{justify-self:start;font:inherit;font-size:12.5px;font-weight:600;padding:5px 12px;border:0;border-radius:6px;background:var(--accent);color:var(--surface);cursor:pointer}
+.fenetre{border:1px solid var(--line);border-radius:12px;padding:18px 20px;width:min(440px,calc(100vw - 32px));background:var(--surface);color:var(--ink);box-shadow:0 12px 40px rgba(0,0,0,.25);text-align:left}
+.fenetre::backdrop{background:rgba(20,15,10,.35)}
+.fenetre form{display:grid;gap:10px;margin:0}
+.fenetre h4{margin:0;font-size:15px;font-family:var(--display)}
+.fenetre label{font-size:12.5px;color:var(--ink-3)}
+.fenetre textarea{font:inherit;font-size:14px;width:100%;min-height:96px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);resize:vertical}
+.fenetre .boutons{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.fenetre button{font:inherit;font-size:13.5px;font-weight:600;padding:7px 14px;border:0;border-radius:8px;cursor:pointer}
+.fenetre .garder{background:var(--accent);color:var(--surface)}
+.fenetre .fermer{background:var(--sunk);color:var(--ink)}
+.fenetre .aide{margin:0;font-size:12px;color:var(--ink-3)}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px}
 .chart svg{width:100%;height:auto;display:block}
 .chart text{font-family:var(--mono);font-size:11px;fill:var(--ink-3)}
@@ -491,10 +498,12 @@ function semaineHtml(texte) {
  * une colonne par semaine. L'équipe coche une case (un commit) ; l'associé
  * voit la même grille, sans pouvoir la changer.
  *
- * Chaque semaine peut porter un commentaire : un point bleu sur la case, le
- * texte au survol. Ceux de la semaine dernière et de cette semaine
- * s'affichent en clair sous la tâche, et l'équipe les écrit là (un
- * formulaire par semaine, déjà rempli ; le vider efface le commentaire).
+ * Chaque semaine peut porter un commentaire. Sous chaque case, une bulle
+ * (✎ vide, 💬 remplie) ouvre une petite fenêtre au milieu de l'écran
+ * (attribut HTML `popover` : toujours sans script), déjà remplie ; la
+ * vider efface le commentaire. Les commentaires de toutes les semaines
+ * affichées se lisent en clair sous le nom de la tâche. L'associé les
+ * lit, sans bulle pour écrire.
  */
 function recurrentesHtml(r, peutCocher) {
   if (!r || !r.ok) return `<div class="panne">Le registre n'est pas lu : les tâches récurrentes sont dans <span class="mono">pilotage/recurrent.md</span>.</div>`;
@@ -504,37 +513,44 @@ function recurrentesHtml(r, peutCocher) {
   const caseHtml = (t, c) => {
     const signe = c.etat === "fait" ? "✓" : "";
     const titre = `${AIDE[c.etat]} · semaine du ${jourCourt(c.lundi)}${c.note ? ` · ${c.note}` : ""}`;
-    const classe = `case ${c.etat}${c.note ? " annotee" : ""}`;
+    const classe = `case ${c.etat}`;
     if (!peutCocher || c.etat === "avant") return `<span class="${classe}" title="${esc(titre)}" aria-label="${esc(titre)}">${signe}</span>`;
     return `<form method="post" action="/recurrente">
       <input type="hidden" name="i" value="${t.index}"><input type="hidden" name="titre" value="${esc(t.titre)}"><input type="hidden" name="lundi" value="${esc(c.lundi)}">
       <button type="submit" class="${classe}" title="${esc(titre)} · cliquer pour ${c.etat === "fait" ? "décocher" : "cocher"}" aria-label="${esc(titre)}">${signe}</button></form>`;
   };
-  // La semaine dernière et cette semaine : leurs commentaires en clair, et
-  // (pour l'équipe) de quoi les écrire.
-  const proches = r.semaines.filter((s) => s.passee || s.en_cours);
+  const semaine = (lundi) => r.semaines.find((s) => s.lundi === lundi) || {};
+  const quand = (s) => `S${s.numero} · ${s.en_cours ? "cette semaine" : s.passee ? "semaine dernière" : "à venir"} (${esc(s.du)} – ${esc(s.au)})`;
+  // Sous la case : la bulle qui ouvre la fenêtre du commentaire.
+  const bulleHtml = (t, c) => {
+    if (c.etat === "avant") return "";
+    const s = semaine(c.lundi);
+    if (!peutCocher) return c.note ? `<span class="bulle pleine" title="${esc(c.note)}" aria-label="Commentaire : ${esc(c.note)}">💬</span>` : "";
+    const id = `note-${t.index}-${c.lundi}`;
+    return `<button type="button" class="bulle${c.note ? " pleine" : ""}" popovertarget="${id}"
+        title="${esc(c.note || "Commenter cette semaine")}" aria-label="${c.note ? "Modifier le commentaire" : "Commenter"} · S${s.numero}">${c.note ? "💬" : "✎"}</button>
+      <div popover id="${id}" class="fenetre" role="dialog" aria-label="Commentaire · ${esc(t.nom)} · S${s.numero}">
+        <form method="post" action="/recurrente/note">
+          <input type="hidden" name="i" value="${t.index}"><input type="hidden" name="titre" value="${esc(t.titre)}"><input type="hidden" name="lundi" value="${esc(c.lundi)}">
+          <h4>${esc(t.nom)}</h4>
+          <label for="${id}-texte">${quand(s)}</label>
+          <textarea id="${id}-texte" name="texte" maxlength="300" autofocus placeholder="Ce qui a été fait, ce qui manque…">${esc(c.note)}</textarea>
+          <div class="boutons"><button type="submit" class="garder">Enregistrer</button>
+            <button type="button" class="fermer" popovertarget="${id}" popovertargetaction="hide">Annuler</button></div>
+          <p class="aide">Vider le texte efface le commentaire. Échap ferme la fenêtre.</p>
+        </form>
+      </div>`;
+  };
+  // Sous le nom de la tâche : les commentaires de toutes les semaines affichées.
   const notesHtml = (t) => {
-    const ecrites = proches.map((s) => [s, t.cases.find((c) => c.lundi === s.lundi)]).filter(([, c]) => c && c.note);
-    const liste = ecrites.length ? `<ul class="notes-sem">${ecrites.map(([s, c]) => `<li><b>S${s.numero}</b> ${esc(c.note)}</li>`).join("")}</ul>` : "";
-    if (!peutCocher) return liste;
-    const ouvertes = proches.filter((s) => !(t.depuis && s.lundi < t.depuis));
-    if (!ouvertes.length) return liste;
-    return `${liste}<details class="commenter"><summary>✎ ${ecrites.length ? "Modifier un commentaire" : "Commenter"}</summary>
-      ${ouvertes.map((s) => {
-        const c = t.cases.find((x) => x.lundi === s.lundi);
-        const id = `note-${t.index}-${s.lundi}`;
-        return `<form method="post" action="/recurrente/note">
-        <input type="hidden" name="i" value="${t.index}"><input type="hidden" name="titre" value="${esc(t.titre)}"><input type="hidden" name="lundi" value="${esc(s.lundi)}">
-        <label for="${id}">S${s.numero} · ${s.en_cours ? "cette semaine" : "semaine dernière"} (${esc(s.du)} – ${esc(s.au)})</label>
-        <textarea id="${id}" name="texte" maxlength="300" placeholder="Ce qui a été fait, ce qui manque…">${esc(c ? c.note : "")}</textarea>
-        <button type="submit">Enregistrer</button></form>`;
-      }).join("")}</details>`;
+    const ecrites = t.cases.filter((c) => c.note);
+    return ecrites.length ? `<ul class="notes-sem">${ecrites.map((c) => `<li><b>S${semaine(c.lundi).numero}</b> ${esc(c.note)}</li>`).join("")}</ul>` : "";
   };
   return `<div class="tbl-scroll"><table class="recur">
     <thead><tr><th>Tâche</th>${r.semaines.map((s) => `<th class="${s.en_cours ? "encours" : s.passee ? "passee" : ""}">S${s.numero}<small>${esc(s.du)} – ${esc(s.au)}</small><small>${s.en_cours ? "cette semaine" : s.passee ? "dernière" : ""}</small></th>`).join("")}</tr></thead>
-    <tbody>${r.lignes.map((t) => `<tr>
+    <tbody>${r.lignes.map((t) => `<tr id="rec-${t.index}">
       <td><b>${esc(t.nom)}</b>${t.texte ? `<br><small>${md(t.texte.slice(0, 160))}${t.texte.length > 160 ? "…" : ""}</small>` : ""}${notesHtml(t)}</td>
-      ${t.cases.map((c) => `<td>${caseHtml(t, c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+      ${t.cases.map((c) => `<td><div class="semaine-cell">${caseHtml(t, c)}${bulleHtml(t, c)}</div></td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 
 function occupationHtml(occ) {
@@ -691,7 +707,7 @@ export function pageTableau(v, lu, associe = false) {
 </section>
 
 <section id="recurrentes" aria-labelledby="h-rec">
-  ${pli("h-rec", "Les tâches de chaque semaine", `La semaine dernière, cette semaine, puis les quatre suivantes · ${associe ? "" : "cliquer une case la coche, ✎ pour la commenter · "}<span class="mono">pilotage/recurrent.md</span>`,
+  ${pli("h-rec", "Les tâches de chaque semaine", `La semaine dernière, cette semaine, puis les quatre suivantes · ${associe ? "" : "cliquer une case la coche, ✎ dessous pour la commenter · "}<span class="mono">pilotage/recurrent.md</span>`,
     recurrentesHtml(v.recurrentes, !associe))}
 </section>
 

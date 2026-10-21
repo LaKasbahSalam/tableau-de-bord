@@ -229,12 +229,13 @@ async function noterSemaine(requete, env) {
     const { contenu, sha } = await lireFichierRegistre(env, "recurrent.md");
     const tache = lireRecurrentes(contenu).find((t) => t.index === index);
     if (!tache || tache.titre !== titre) throw new Error("Le fichier a changé depuis l'affichage : recharge la page et recommence.");
-    if ((tache.notes[lundi] || "") === texte) return new Response(null, { status: 303, headers: { Location: "/#recurrentes" } });
+    const retour = { status: 303, headers: { Location: `/#rec-${tache.index}` } };
+    if ((tache.notes[lundi] || "") === texte) return new Response(null, retour);
     const jour = `${lundi.slice(8, 10)}/${lundi.slice(5, 7)}`;
     await ecrireFichierRegistre(env, "recurrent.md", ecrireNote(contenu, tache, lundi, texte), sha,
       `${texte ? "Note" : "Note effacée"} « ${tache.nom} », semaine du ${jour} (depuis le tableau de bord)`);
     cache = null;
-    return new Response(null, { status: 303, headers: { Location: "/#recurrentes" } });
+    return new Response(null, retour);
   } catch (e) {
     return html(pageConnexion({ titre: "Commentaire non écrit", erreur: `${e.message || e} — rien n'a été écrit.`, bloque: true, retour: "/#recurrentes" }), 409);
   }
