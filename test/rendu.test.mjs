@@ -285,7 +285,7 @@ verifier(page.indexOf("Les chiffres") < page.indexOf("Ce qui demande une action"
   verifier(detail.includes("--l:100%;--c:var(--accent)") && detail.includes("--c:var(--terre)"), "produits en bleu, charges en terre cuite, à la même échelle");
   verifier(["Breakfast", "Repas", "Snack", "Autre vente"].every((p) => detail.includes(`<h4>${p}</h4>`)), "les quatre pôles de la restauration");
   verifier(["Karim", "Ayoub", "Abdul", "Saïda"].every((n) => detail.includes(`<h4>${n}</h4>`)), "quatre cartes d'associés, dans l'ordre demandé");
-  verifier(detail.includes("42 000 DH") && detail.includes("l'hôtel lui doit") && detail.includes("avance reçue"), "le solde total et son sens");
+  verifier(detail.includes("42 000 DH") && detail.includes("l'hôtel lui doit") && detail.includes("doit à l'hôtel</span>"), "le solde total et son sens");
   verifier(detail.includes("Ce mois-ci : 1 200 DH") && detail.includes("rien de noté") && detail.includes("Pas reçu de la V16"), "le solde du mois, ou ce qui manque");
   verifier(detail.includes("Travaux et aménagements") && detail.includes("3 650 DH") && detail.includes("Depuis mars : 13 048 DH"), "travaux et entretien, le mois et l'exercice");
   const { detailMoisHtml } = await import("../src/page.js");

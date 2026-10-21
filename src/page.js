@@ -443,9 +443,9 @@ export function detailMoisHtml(d) {
   </article>`;
 
   const associes = d.associes || [];
-  const sens = (v) => (Number(v) > 0 ? "l'hôtel lui doit" : Number(v) < 0 ? "avance reçue" : "à jour");
+  const sens = (v) => (Number(v) > 0 ? "l'hôtel lui doit" : Number(v) < 0 ? "doit à l'hôtel" : "à jour");
   const comptes = `<article class="carte">
-    <h3>Comptes des associés</h3><p class="aide">Solde total en haut, le mois dessous · positif : l'hôtel doit encore</p>
+    <h3>Comptes des associés</h3><p class="aide">Solde total en haut, le mois dessous · positif : l'hôtel doit encore, négatif : la personne doit à l'hôtel</p>
     ${associes.length ? `<div class="associes">${Object.keys(ASSOCIES).map((cle) => {
       const a = associes.find((x) => x.personne === cle);
       if (!a) return `<div class="associe"><h4>${ASSOCIES[cle]}</h4><small>Pas reçu de la V16</small></div>`;
