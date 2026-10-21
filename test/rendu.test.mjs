@@ -110,6 +110,8 @@ reponses["/repos/LaKasbahSalam/Kasbah-Analytique/contents/pilotage/recurrent.md"
 
 **Depuis :** ${lundi(3).fr}
 **Fait :** ${lundi(3).fr}, ${lundi(1).fr}, ${lundi(-1).fr}
+**Note ${lundi(1).fr} :** Fait, mais la facture du boucher manque
+**Note ${lundi(-1).fr} :** Prévoir le boucher
 
 Rapprocher les achats de repas des fiches clients.
 
@@ -136,6 +138,22 @@ const supabase = {
       places_vendues: 250, capacite: 510, taux_occupation: 0.4902,
       adr_encaisse: 168.4, adr_encaisse_mois: 1, adr_facture: 175, adr_facture_mois: 1,
       mois_comptes: 1, depuis: "2026-09-01", jusqua: "2026-09-01" },
+  },
+  // Le mois en cours en détail : les chiffres d'octobre 2026, tels que le CdR les donne
+  detail_mois: {
+    mois: new Date().toISOString().slice(0, 7),
+    produits: [{ poste: "Location Chambre", montant: 14691 }, { poste: "Ventes restauration", montant: 3020 }, { poste: "Vente divers", montant: 708 }],
+    charges: [{ poste: "Loyer", montant: -6000, section: "charges_fixes" }, { poste: "Aménagements & travaux", montant: -3650, section: "charges_variables" },
+      { poste: "Salaires — Ayoub", montant: -2500, section: "charges_fixes" }, { poste: "Dotation aux amortissements", montant: -1682.88, section: "charges_variables" }],
+    totaux: { total_produits: 18419, total_charges: -25259.1, resultat_avant_amortissements: -5157.22, resultat_net: -6840.1 },
+    restauration: [{ pole: "breakfast", vente: 655, achat: -1084.5 }, { pole: "repas", vente: 2365, achat: -1510 },
+      { pole: "snack", vente: 0, achat: 0 }, { pole: "restauration_autre", vente: 0, achat: -395 }],
+    chantiers: [{ domaine: "travaux", mois: -3650, exercice: -5000 }, { domaine: "entretien", mois: -2189, exercice: -13048 }],
+    associes: [
+      { personne: "karim", solde: 42000, mois: new Date().toISOString().slice(0, 7), solde_mois: 1200 },
+      { personne: "ayoub", solde: -800, mois: new Date().toISOString().slice(0, 7), solde_mois: 2500 },
+      { personne: "abdul", solde: 2000, mois: new Date().toISOString().slice(0, 7), solde_mois: null },
+    ],
   },
   sources: [
     { source: "beds24", derniere_reussite: il_y_a(8), derniere_tentative: il_y_a(8), statut: "ok", lignes: 298 },
@@ -255,6 +273,25 @@ verifier(r.status === 200, "page rendue");
 verifier(/Envoi du CdR[\s\S]{0,400}En erreur/.test(page), "CdR en erreur signalé");
 verifier(page.includes("Solde absent du message"), "synchro de 14h : solde absent détecté");
 verifier(page.indexOf("Les chiffres") < page.indexOf("Ce qui demande une action"), "les chiffres sont tout en haut");
+
+// --- Le mois en cours en détail, sous les tuiles
+{
+  const detail = ((page.match(/<div class="detail">[\s\S]*?<\/section>/) || [""])[0]).replace(/[  ]/g, " ");
+  verifier(page.indexOf('<div class="detail">') > page.indexOf('<div class="chiffres">') && page.indexOf('<div class="detail">') < page.indexOf('id="semaine"'),
+    "le détail du mois est juste sous les tuiles");
+  verifier(detail.includes("18 419 DH") && detail.includes("25 259 DH"), "produits et charges portent les totaux du CdR, les charges en positif");
+  verifier(/<div class="negatif"><dt>Résultat avant amortissements<\/dt><dd>-5 157 DH/.test(detail)
+    && /<div class="negatif"><dt>Résultat net, amortissements compris<\/dt><dd>-6 840 DH/.test(detail), "les deux résultats, en rouge quand ils sont négatifs");
+  verifier(detail.includes("--l:100%;--c:var(--accent)") && detail.includes("--c:var(--terre)"), "produits en bleu, charges en terre cuite, à la même échelle");
+  verifier(["Breakfast", "Repas", "Snack", "Autre vente"].every((p) => detail.includes(`<h4>${p}</h4>`)), "les quatre pôles de la restauration");
+  verifier(["Karim", "Ayoub", "Abdul", "Saïda"].every((n) => detail.includes(`<h4>${n}</h4>`)), "quatre cartes d'associés, dans l'ordre demandé");
+  verifier(detail.includes("42 000 DH") && detail.includes("l'hôtel lui doit") && detail.includes("avance reçue"), "le solde total et son sens");
+  verifier(detail.includes("Ce mois-ci : 1 200 DH") && detail.includes("rien de noté") && detail.includes("Pas reçu de la V16"), "le solde du mois, ou ce qui manque");
+  verifier(detail.includes("Travaux et aménagements") && detail.includes("3 650 DH") && detail.includes("Depuis mars : 13 048 DH"), "travaux et entretien, le mois et l'exercice");
+  const { detailMoisHtml } = await import("../src/page.js");
+  verifier(detailMoisHtml(null) === "", "sans la nouvelle fonction Supabase, rien ne s'affiche");
+  verifier(detailMoisHtml({ mois: "2026-10", associes: [] }).includes("ExportCdr.js"), "sans comptes reçus, la carte dit d'où ils viendront");
+}
 const nombres = page.replace(/[  ]/g, " ");
 verifier(nombres.includes("110 000 DH") && nombres.includes("20 000 DH"), "revenu : exercice et mois en cours");
 verifier(nombres.includes("15 000 DH") && nombres.includes("2 000 DH"), "résultat net sur les deux périodes");
@@ -650,7 +687,7 @@ if (prevTexte) {
   verifier(entetes.length === 6, "six colonnes de semaines, numérotées comme les résumés");
   verifier(entetes[0].includes("passee") && entetes[1].includes("encours"), "la semaine dernière d'abord, puis cette semaine, puis les quatre à venir");
   verifier(grille.includes("dernière</small>") && grille.includes("cette semaine</small>"), "les deux semaines sont nommées en toutes lettres");
-  verifier((grille.match(/class="case fait"/g) || []).length === 2, "la semaine dernière faite et la semaine cochée d'avance sont cochées");
+  verifier((grille.match(/class="case fait[ "]/g) || []).length === 2, "la semaine dernière faite et la semaine cochée d'avance sont cochées");
   verifier((grille.match(/class="case a_venir"/g) || []).length === 6, "les semaines à venir attendent, sans orange");
   verifier(!grille.includes("case manque"), "la semaine dernière a été faite : pas d'orange");
   verifier((grille.match(/class="case avant"/g) || []).length === 3, "avant « Depuis », pas de case à cocher");
@@ -681,6 +718,43 @@ if (prevTexte) {
   const mardi = new Date(lundi(0).iso + "T12:00:00Z"); mardi.setUTCDate(mardi.getUTCDate() + 1);
   r = await cocher(mardi.toISOString().slice(0, 10));
   verifier(r.status === 400 && ecrits.length === avantRec, "seul un lundi est accepté");
+
+  // --- Un commentaire par semaine
+  verifier(grille.includes("<li><b>S") && grille.includes("Fait, mais la facture du boucher manque</li>"), "le commentaire de la semaine dernière s'affiche en clair sous la tâche");
+  verifier(!grille.includes("</b> Prévoir le boucher</li>") && grille.includes("· Prévoir le boucher"), "celui d'une semaine à venir se lit au survol de sa case");
+  verifier((grille.match(/case [a-z_]+ annotee/g) || []).length === 2, "un point sur chaque case commentée");
+  verifier((grille.match(/action="\/recurrente\/note"/g) || []).length === 2, "deux formulaires : semaine dernière et cette semaine, pour la seule tâche déjà commencée");
+  verifier(/<textarea[^>]*name="texte"[^>]*>Fait, mais la facture du boucher manque<\/textarea>/.test(grille), "le formulaire reprend le commentaire existant");
+  verifier(grilleAssocie.includes("Fait, mais la facture du boucher manque") && !grilleAssocie.includes("/recurrente/note"), "l'associé lit les commentaires, sans pouvoir les écrire");
+
+  const noter = (lundiIso, texte, cle = cookie) => {
+    const fc = new FormData();
+    fc.set("i", "0"); fc.set("titre", "Vérifier les ventes de Repas"); fc.set("lundi", lundiIso); fc.set("texte", texte);
+    return worker.fetch(new Request("https://t.dev/recurrente/note", { method: "POST", body: fc, headers: { Cookie: cle } }), env);
+  };
+  avantRec = ecrits.length;
+  r = await noter(lundi(0).iso, "Fait le mardi\navec Ayoub");
+  let ecritNote = ecrits[ecrits.length - 1];
+  verifier(r.status === 303 && ecrits.length === avantRec + 1 && ecritNote.chemin.endsWith("pilotage/recurrent.md"), "commenter une semaine écrit un commit");
+  verifier(ecritNote.contenu.includes(`**Note ${lundi(1).fr} :** Fait, mais la facture du boucher manque
+**Note ${lundi(0).fr} :** Fait le mardi avec Ayoub
+**Note ${lundi(-1).fr} :** Prévoir le boucher
+`), "le commentaire tient sur une ligne, rangé par date");
+  verifier(/^Note « Vérifier les ventes de Repas », semaine du/.test(ecritNote.message) && ecritNote.contenu.includes("Rapprocher les achats"), "le reste est intact, le commit dit quoi");
+  r = await noter(lundi(1).iso, "Facture retrouvée");
+  ecritNote = ecrits[ecrits.length - 1];
+  verifier(ecritNote.contenu.includes(`**Note ${lundi(1).fr} :** Facture retrouvée
+`) && !ecritNote.contenu.includes("boucher manque"), "réécrire un commentaire le remplace");
+  r = await noter(lundi(1).iso, "   ");
+  ecritNote = ecrits[ecrits.length - 1];
+  verifier(!ecritNote.contenu.includes(`**Note ${lundi(1).fr}`) && /^Note effacée/.test(ecritNote.message), "le vider l'efface");
+  avantRec = ecrits.length;
+  r = await noter(lundi(1).iso, "Fait, mais la facture du boucher manque");
+  verifier(r.status === 303 && ecrits.length === avantRec, "un commentaire inchangé n'écrit rien");
+  r = await noter(lundi(0).iso, "x", cookieAssocie);
+  verifier(r.status === 403 && ecrits.length === avantRec, "l'associé ne peut pas commenter");
+  r = await noter(mardi.toISOString().slice(0, 10), "x");
+  verifier(r.status === 400 && ecrits.length === avantRec, "un commentaire va sur un lundi");
 }
 
 if (process.argv[2]) fs.writeFileSync(process.argv[2], page);

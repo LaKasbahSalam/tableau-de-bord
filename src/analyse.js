@@ -423,6 +423,7 @@ export function analyser({ github, registre, supabase }, maintenant) {
       ...t,
       cases: recurrentes.semaines.map((s) => ({
         lundi: s.lundi,
+        note: t.notes[s.lundi] || "",
         etat: t.faites.includes(s.lundi) ? "fait" : (t.depuis && s.lundi < t.depuis) ? "avant"
           : s.en_cours ? "en_cours" : s.lundi > cetteSemaine ? "a_venir" : "manque",
       })),
@@ -464,6 +465,7 @@ export function analyser({ github, registre, supabase }, maintenant) {
     faits,
     faits_par_domaine: parDomaine(faits, ici.jour, 30),
     chiffres: sb ? sb.chiffres : null,
+    detail_mois: sb ? sb.detail_mois : null,
     semaine: registre.ok ? registre.donnees.semaine : "",
     recurrentes,
     occupation: sb ? sb.occupation : null,

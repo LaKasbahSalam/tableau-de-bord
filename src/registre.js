@@ -269,17 +269,24 @@ export function numeroSemaine(lundi) {
 
 const frDepuisIso = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
+/** Une note de semaine : `**Note JJ/MM/AAAA :** texte` (le lundi de la semaine). */
+const NOTE = /^\*\*Note\s+(\d{2}\/\d{2}\/\d{4})\s*:\*\*\s*(.*)$/;
+
 /**
- * `recurrent.md` → une tâche par bloc `## Nom`. Deux lignes comptent :
- * `**Depuis :** JJ/MM/AAAA` et `**Fait :** JJ/MM/AAAA, …` (les lundis des
- * semaines cochées). Le reste est la description.
+ * `recurrent.md` → une tâche par bloc `## Nom`. Trois sortes de lignes
+ * comptent : `**Depuis :** JJ/MM/AAAA`, `**Fait :** JJ/MM/AAAA, …` (les
+ * lundis des semaines cochées) et `**Note JJ/MM/AAAA :** texte` (le
+ * commentaire d'une semaine). Le reste est la description.
  */
 export function lireRecurrentes(md) {
   return decouper(md, "##").map((b, index) => {
     let depuis = "";
     let faites = [];
     let texte = "";
+    const notes = {};
     for (const ligne of b.corps) {
+      const n = ligne.match(NOTE);
+      if (n) { const iso = isoDepuisFr(n[1]); if (iso && n[2].trim()) notes[lundiDe(iso)] = n[2].trim(); continue; }
       const d = ligne.match(/^\*\*Depuis\s*:\*\*\s*(.*)$/);
       if (d) { depuis = isoDepuisFr(d[1].trim()) || ""; continue; }
       const f = ligne.match(/^\*\*Fait\s*:\*\*\s*(.*)$/);
@@ -287,7 +294,7 @@ export function lireRecurrentes(md) {
       if (ligne.trim()) texte += (texte ? " " : "") + ligne.trim();
     }
     return {
-      nom: b.titre, depuis: depuis ? lundiDe(depuis) : "", faites: [...new Set(faites)].sort(), texte,
+      nom: b.titre, depuis: depuis ? lundiDe(depuis) : "", faites: [...new Set(faites)].sort(), notes, texte,
       fichier: "recurrent.md", index, debut: b.debut, fin: b.fin, brut: b.brut, titre: b.titre,
     };
   }).filter((t) => t.nom);
@@ -309,4 +316,31 @@ export function basculerSemaine(contenu, tache, lundi) {
     lignes.splice(j >= 0 ? j + 1 : 1, 0, ligneFait);
   }
   return remplacerBloc(contenu, { debut: tache.debut, fin: tache.fin, titreAttendu: tache.titre }, lignes.join("\n"));
+}
+
+/** Un commentaire tient sur une ligne : retours à la ligne aplatis, 300 caractères au plus. */
+export const nettoyerNote = (texte) => String(texte || "").replace(/\s+/g, " ").trim().slice(0, 300);
+
+/**
+ * Écrit, remplace ou efface (texte vide) le commentaire d'une semaine :
+ * une ligne `**Note JJ/MM/AAAA :**`, rangée par date sous `**Fait :**`.
+ */
+export function ecrireNote(contenu, tache, lundi, texte) {
+  const propre = nettoyerNote(texte);
+  const lignes = tache.brut.split(/\r?\n/);
+  const notes = [];
+  const gardees = lignes.filter((l) => {
+    const n = l.match(NOTE);
+    if (!n) return true;
+    const iso = isoDepuisFr(n[1]);
+    if (iso && lundiDe(iso) !== lundi) notes.push([lundiDe(iso), l]);
+    return false;
+  });
+  if (propre) notes.push([lundi, `**Note ${frDepuisIso(lundi)} :** ${propre}`]);
+  notes.sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  // Sous la dernière des lignes `**Fait :**` / `**Depuis :**`, ou sous le titre.
+  let apres = 0;
+  gardees.forEach((l, i) => { if (/^\*\*(Fait|Depuis)\s*:\*\*/.test(l)) apres = i; });
+  gardees.splice(apres + 1, 0, ...notes.map((n) => n[1]));
+  return remplacerBloc(contenu, { debut: tache.debut, fin: tache.fin, titreAttendu: tache.titre }, gardees.join("\n"));
 }

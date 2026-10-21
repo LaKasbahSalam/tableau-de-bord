@@ -23,6 +23,7 @@ const CSS = `
   /* Charte Kasbah — reprise du thème Looker (looker-theme-source-v2.png) */
   --bg:#F6F0E6; --surface:#FFFCF7; --sunk:#EFE7D9; --ink:#2A221C; --ink-2:#5C4E41; --ink-3:#8A7A68;
   --line:#DFD3BF; --accent:#2E5FB3; --accent-soft:#DEE7F7;
+  --terre:#A8573A; --terre-soft:#F3DDD2;
   --crit:#C1430E; --crit-soft:#F8E0D3; --warn:#8A6410; --warn-soft:#FBEED5; --ok:#1F8C5D; --ok-soft:#DBEFE4; --idle:#8A7A68; --idle-soft:#EBE3D5;
   --display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
   --body:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
@@ -33,6 +34,7 @@ const CSS = `
   :root{
     --bg:#211B16; --surface:#2A221C; --sunk:#342A22; --ink:#F5EEE2; --ink-2:#CBBDA3; --ink-3:#9B8B78;
     --line:#3E342A; --accent:#6E96D4; --accent-soft:#1E2B40;
+    --terre:#D98A68; --terre-soft:#3A251C;
     --crit:#E4703F; --crit-soft:#3A2018; --warn:#EDA92B; --warn-soft:#342612; --ok:#4FB183; --ok-soft:#16301F; --idle:#9B8B78; --idle-soft:#2E2620;
   }
 }
@@ -137,6 +139,40 @@ td.echeance{white-space:normal;min-width:110px;max-width:160px}
 .kpi dt + dd{color:var(--ink)}
 .kpi dt:last-of-type ~ dd{color:var(--ink-2)}
 .sous-bande{margin:10px 0 0;font-size:13px;color:var(--ink-3)}
+.detail{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-top:16px}
+.detail>.large{grid-column:1/-1}
+.carte{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;gap:10px;align-content:start;min-width:0}
+.carte h3{font-size:15px}
+.carte .aide{margin:-6px 0 0;font-size:12px;color:var(--ink-3)}
+.pc{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px 24px}
+.pc .tete{display:flex;justify-content:space-between;align-items:baseline;gap:8px;border-bottom:2px solid currentColor;padding-bottom:4px;margin-bottom:6px}
+.pc .tete span{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase}
+.pc .tete b,.barres b{font-family:var(--mono);font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
+.produit{color:var(--accent)} .charge{color:var(--terre)}
+.barres{list-style:none;margin:0;padding:0;display:grid;gap:5px;color:var(--ink)}
+.barres li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;font-size:13.5px;align-items:baseline}
+.barres li>span{min-width:0;overflow-wrap:anywhere}
+.barres i{grid-column:1/-1;display:block;height:6px;border-radius:3px;background:var(--sunk);overflow:hidden}
+.barres i::after{content:"";display:block;height:100%;width:var(--l);border-radius:3px;background:var(--c)}
+.resultats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin:0}
+.resultats div{border-radius:8px;padding:8px 12px;display:grid;gap:2px}
+.resultats dt{font-size:12px;color:var(--ink-2)}
+.resultats dd{margin:0;font-family:var(--mono);font-weight:500;font-size:20px;font-variant-numeric:tabular-nums}
+.positif{background:var(--ok-soft)} .positif dd{color:var(--ok)}
+.negatif{background:var(--crit-soft)} .negatif dd{color:var(--crit)}
+.pole{display:grid;gap:4px;padding-top:8px;border-top:1px solid var(--line)}
+.pole:first-of-type{border-top:0;padding-top:0}
+.pole h4{margin:0;font-size:14px}
+.associes{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.associe{background:var(--sunk);border-radius:8px;padding:10px 12px;display:grid;gap:2px}
+.associe h4{margin:0;font-size:14px}
+.associe .total{font-family:var(--mono);font-weight:500;font-size:20px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.associe small{font-size:12px;color:var(--ink-3)}
+.associe .sens{font-size:12px;color:var(--ink-2)}
+.chantier{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:baseline;padding-top:8px;border-top:1px solid var(--line)}
+.chantier:first-of-type{border-top:0;padding-top:0}
+.chantier b{font-family:var(--mono);font-weight:500;font-size:20px;font-variant-numeric:tabular-nums;color:var(--terre);white-space:nowrap}
+.chantier small{grid-column:1/-1;font-size:12px;color:var(--ink-3)}
 .faits{list-style:none;margin:0;padding:0;display:grid;gap:0;background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;counter-reset:f}
 .faits li{display:grid;grid-template-columns:120px 1fr;gap:6px 18px;padding:16px 18px;border-top:1px solid var(--line)}
 .faits li:first-child{border-top:0}
@@ -211,6 +247,17 @@ button.case:hover{border-color:var(--accent)}
 .case.en_cours{border-color:var(--accent)}
 .case.a_venir{opacity:.7}
 .case.avant{border-style:dashed;opacity:.45}
+.case.annotee{position:relative}
+.case.annotee::after{content:"";position:absolute;top:-4px;right:-4px;width:9px;height:9px;border-radius:50%;background:var(--accent);border:2px solid var(--surface)}
+.notes-sem{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:3px;font-size:12.5px;color:var(--ink-2);max-width:46ch}
+.notes-sem b{font-family:var(--mono);font-weight:500;font-size:11.5px;color:var(--ink-3)}
+.commenter{margin-top:6px;font-size:12.5px}
+.commenter summary{cursor:pointer;color:var(--accent);font-family:var(--mono);font-size:11.5px;list-style:none}
+.commenter summary::-webkit-details-marker{display:none}
+.commenter form{display:grid;gap:6px;margin-top:6px;max-width:46ch}
+.commenter label{font-size:12px;color:var(--ink-3)}
+.commenter textarea{font:inherit;font-size:13px;width:100%;min-height:52px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);resize:vertical}
+.commenter button{justify-self:start;font:inherit;font-size:12.5px;font-weight:600;padding:5px 12px;border:0;border-radius:6px;background:var(--accent);color:var(--surface);cursor:pointer}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px}
 .chart svg{width:100%;height:auto;display:block}
 .chart text{font-family:var(--mono);font-size:11px;fill:var(--ink-3)}
@@ -349,6 +396,75 @@ export function chiffresHtml(ch) {
 </section>`;
 }
 
+const POLES = { breakfast: "Breakfast", repas: "Repas", snack: "Snack", restauration_autre: "Autre vente" };
+const ASSOCIES = { karim: "Karim", ayoub: "Ayoub", abdul: "Abdul", saida: "Saïda" };
+const CHANTIERS = { travaux: "Travaux et aménagements", entretien: "Entretien et réparations" };
+
+/** Une ligne à barre : la longueur dit le poids du montant face au plus gros. */
+const barre = (libelle, montant, max, couleur) => {
+  const v = Math.abs(Number(montant) || 0);
+  const l = max > 0 && v > 0 ? Math.max(1, Math.round((v / max) * 100)) : 0;
+  return `<li><span>${esc(libelle)}</span><b>${dh(v)}</b><i style="--l:${l}%;--c:var(--${couleur})"></i></li>`;
+};
+const signe = (v) => (v == null ? "" : Number(v) >= 0 ? "positif" : "negatif");
+
+/**
+ * Le mois en cours en détail, sous les tuiles : produits et charges, la
+ * restauration par pôle, le compte de chaque associé, travaux et entretien.
+ * Tout vient du CdR de la V16 (fonction `tableau_de_bord`, clé
+ * `detail_mois`) : les totaux et les résultats sont ses lignes, pas des
+ * additions faites ici. Les charges s'affichent en positif, en terre cuite.
+ */
+export function detailMoisHtml(d) {
+  if (!d) return "";
+  const nomMois = d.mois ? moisLong(d.mois + "-01") : "mois en cours";
+  const produits = d.produits || [], charges = d.charges || [], t = d.totaux || {};
+  const max = Math.max(0, ...produits.map((p) => Math.abs(p.montant)), ...charges.map((c) => Math.abs(c.montant)));
+  const resultat = (titre, v) => `<div class="${signe(v)}"><dt>${titre}</dt><dd>${dh(v)}</dd></div>`;
+  const rien = "<li><span>Rien encore ce mois-ci</span></li>";
+
+  const cdr = `<article class="carte large">
+    <h3>Produits et charges</h3><p class="aide">${esc(nomMois)}, mois en cours · lignes du compte de résultat de la V16</p>
+    <div class="pc">
+      <div><div class="tete produit"><span>Produits</span><b>${dh(t.total_produits)}</b></div>
+        <ul class="barres">${produits.map((p) => barre(p.poste, p.montant, max, "accent")).join("") || rien}</ul></div>
+      <div><div class="tete charge"><span>Charges</span><b>${dh(t.total_charges == null ? null : Math.abs(t.total_charges))}</b></div>
+        <ul class="barres">${charges.map((c) => barre(c.poste, c.montant, max, "terre")).join("") || rien}</ul></div>
+    </div>
+    <dl class="resultats">${resultat("Résultat avant amortissements", t.resultat_avant_amortissements)}${resultat("Résultat net, amortissements compris", t.resultat_net)}</dl>
+  </article>`;
+
+  const poles = d.restauration || [];
+  const maxResto = Math.max(0, ...poles.flatMap((p) => [Math.abs(p.vente), Math.abs(p.achat)]));
+  const resto = `<article class="carte">
+    <h3>Restauration</h3><p class="aide">Vendu <span class="produit">■</span> et acheté <span class="charge">■</span> par pôle, ${esc(nomMois)}</p>
+    ${poles.map((p) => `<div class="pole"><h4>${esc(POLES[p.pole] || p.pole)}</h4>
+      <ul class="barres">${barre("Ventes", p.vente, maxResto, "accent")}${barre("Achats", p.achat, maxResto, "terre")}</ul></div>`).join("")}
+  </article>`;
+
+  const associes = d.associes || [];
+  const sens = (v) => (Number(v) > 0 ? "l'hôtel lui doit" : Number(v) < 0 ? "avance reçue" : "à jour");
+  const comptes = `<article class="carte">
+    <h3>Comptes des associés</h3><p class="aide">Solde total en haut, le mois dessous · positif : l'hôtel doit encore</p>
+    ${associes.length ? `<div class="associes">${Object.keys(ASSOCIES).map((cle) => {
+      const a = associes.find((x) => x.personne === cle);
+      if (!a) return `<div class="associe"><h4>${ASSOCIES[cle]}</h4><small>Pas reçu de la V16</small></div>`;
+      return `<div class="associe"><h4>${ASSOCIES[cle]}</h4>
+        <span class="total">${dh(a.solde)}</span><span class="sens">${sens(a.solde)}</span>
+        <small>${a.mois === d.mois ? "Ce mois-ci" : esc(moisLong((a.mois || "") + "-01"))} : ${a.solde_mois == null ? "rien de noté" : dh(a.solde_mois)}</small></div>`;
+    }).join("")}</div>`
+    : `<div class="panne">Les soldes arrivent avec le compte de résultat, le soir à 22h, une fois l'envoi de la V16 (<span class="mono">ExportCdr.js</span>) mis à jour.</div>`}
+  </article>`;
+
+  const chantiers = `<article class="carte">
+    <h3>Travaux et entretien</h3><p class="aide">Dépensé en ${esc(nomMois)} · cumul de l'exercice dessous</p>
+    ${(d.chantiers || []).map((c) => `<div class="chantier"><span>${esc(CHANTIERS[c.domaine] || c.domaine)}</span><b>${dh(Math.abs(c.mois))}</b>
+      <small>Depuis mars : ${dh(Math.abs(c.exercice))}</small></div>`).join("")}
+  </article>`;
+
+  return `<div class="detail">${cdr}${resto}${comptes}${chantiers}</div>`;
+}
+
 /**
  * Les résumés de la semaine (`pilotage/semaine.md`) : chaque titre `# Semaine NN`
  * ouvre un résumé, le plus récent en haut. Chacun est replié, son titre
@@ -374,23 +490,50 @@ function semaineHtml(texte) {
  * Les tâches récurrentes (`pilotage/recurrent.md`) : une ligne par tâche,
  * une colonne par semaine. L'équipe coche une case (un commit) ; l'associé
  * voit la même grille, sans pouvoir la changer.
+ *
+ * Chaque semaine peut porter un commentaire : un point bleu sur la case, le
+ * texte au survol. Ceux de la semaine dernière et de cette semaine
+ * s'affichent en clair sous la tâche, et l'équipe les écrit là (un
+ * formulaire par semaine, déjà rempli ; le vider efface le commentaire).
  */
 function recurrentesHtml(r, peutCocher) {
   if (!r || !r.ok) return `<div class="panne">Le registre n'est pas lu : les tâches récurrentes sont dans <span class="mono">pilotage/recurrent.md</span>.</div>`;
   if (!r.lignes.length) return `<div class="panne">Aucune tâche récurrente : elles s'écrivent dans <span class="mono">pilotage/recurrent.md</span> du dépôt Kasbah-Analytique.</div>`;
   const AIDE = { fait: "Faite", manque: "Pas faite", en_cours: "À faire cette semaine", a_venir: "À venir", avant: "La tâche n'existait pas encore" };
+  const jourCourt = (lundi) => `${lundi.slice(8, 10)}/${lundi.slice(5, 7)}`;
   const caseHtml = (t, c) => {
     const signe = c.etat === "fait" ? "✓" : "";
-    const titre = `${AIDE[c.etat]} · semaine du ${c.lundi.slice(8, 10)}/${c.lundi.slice(5, 7)}`;
-    if (!peutCocher || c.etat === "avant") return `<span class="case ${c.etat}" title="${esc(titre)}" aria-label="${esc(titre)}">${signe}</span>`;
+    const titre = `${AIDE[c.etat]} · semaine du ${jourCourt(c.lundi)}${c.note ? ` · ${c.note}` : ""}`;
+    const classe = `case ${c.etat}${c.note ? " annotee" : ""}`;
+    if (!peutCocher || c.etat === "avant") return `<span class="${classe}" title="${esc(titre)}" aria-label="${esc(titre)}">${signe}</span>`;
     return `<form method="post" action="/recurrente">
       <input type="hidden" name="i" value="${t.index}"><input type="hidden" name="titre" value="${esc(t.titre)}"><input type="hidden" name="lundi" value="${esc(c.lundi)}">
-      <button type="submit" class="case ${c.etat}" title="${esc(titre)} · cliquer pour ${c.etat === "fait" ? "décocher" : "cocher"}" aria-label="${esc(titre)}">${signe}</button></form>`;
+      <button type="submit" class="${classe}" title="${esc(titre)} · cliquer pour ${c.etat === "fait" ? "décocher" : "cocher"}" aria-label="${esc(titre)}">${signe}</button></form>`;
+  };
+  // La semaine dernière et cette semaine : leurs commentaires en clair, et
+  // (pour l'équipe) de quoi les écrire.
+  const proches = r.semaines.filter((s) => s.passee || s.en_cours);
+  const notesHtml = (t) => {
+    const ecrites = proches.map((s) => [s, t.cases.find((c) => c.lundi === s.lundi)]).filter(([, c]) => c && c.note);
+    const liste = ecrites.length ? `<ul class="notes-sem">${ecrites.map(([s, c]) => `<li><b>S${s.numero}</b> ${esc(c.note)}</li>`).join("")}</ul>` : "";
+    if (!peutCocher) return liste;
+    const ouvertes = proches.filter((s) => !(t.depuis && s.lundi < t.depuis));
+    if (!ouvertes.length) return liste;
+    return `${liste}<details class="commenter"><summary>✎ ${ecrites.length ? "Modifier un commentaire" : "Commenter"}</summary>
+      ${ouvertes.map((s) => {
+        const c = t.cases.find((x) => x.lundi === s.lundi);
+        const id = `note-${t.index}-${s.lundi}`;
+        return `<form method="post" action="/recurrente/note">
+        <input type="hidden" name="i" value="${t.index}"><input type="hidden" name="titre" value="${esc(t.titre)}"><input type="hidden" name="lundi" value="${esc(s.lundi)}">
+        <label for="${id}">S${s.numero} · ${s.en_cours ? "cette semaine" : "semaine dernière"} (${esc(s.du)} – ${esc(s.au)})</label>
+        <textarea id="${id}" name="texte" maxlength="300" placeholder="Ce qui a été fait, ce qui manque…">${esc(c ? c.note : "")}</textarea>
+        <button type="submit">Enregistrer</button></form>`;
+      }).join("")}</details>`;
   };
   return `<div class="tbl-scroll"><table class="recur">
     <thead><tr><th>Tâche</th>${r.semaines.map((s) => `<th class="${s.en_cours ? "encours" : s.passee ? "passee" : ""}">S${s.numero}<small>${esc(s.du)} – ${esc(s.au)}</small><small>${s.en_cours ? "cette semaine" : s.passee ? "dernière" : ""}</small></th>`).join("")}</tr></thead>
     <tbody>${r.lignes.map((t) => `<tr>
-      <td><b>${esc(t.nom)}</b>${t.texte ? `<br><small>${md(t.texte.slice(0, 160))}${t.texte.length > 160 ? "…" : ""}</small>` : ""}</td>
+      <td><b>${esc(t.nom)}</b>${t.texte ? `<br><small>${md(t.texte.slice(0, 160))}${t.texte.length > 160 ? "…" : ""}</small>` : ""}${notesHtml(t)}</td>
       ${t.cases.map((c) => `<td>${caseHtml(t, c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 
@@ -539,6 +682,7 @@ export function pageTableau(v, lu, associe = false) {
 
 <section id="chiffres" aria-labelledby="h-chiffres">
   ${chiffresHtml(v.chiffres)}
+  ${detailMoisHtml(v.detail_mois)}
 </section>
 
 <section id="semaine" aria-labelledby="h-sem">
@@ -547,7 +691,7 @@ export function pageTableau(v, lu, associe = false) {
 </section>
 
 <section id="recurrentes" aria-labelledby="h-rec">
-  ${pli("h-rec", "Les tâches de chaque semaine", `La semaine dernière, cette semaine, puis les quatre suivantes · ${associe ? "" : "cliquer une case la coche · "}<span class="mono">pilotage/recurrent.md</span>`,
+  ${pli("h-rec", "Les tâches de chaque semaine", `La semaine dernière, cette semaine, puis les quatre suivantes · ${associe ? "" : "cliquer une case la coche, ✎ pour la commenter · "}<span class="mono">pilotage/recurrent.md</span>`,
     recurrentesHtml(v.recurrentes, !associe))}
 </section>
 
