@@ -1,10 +1,10 @@
 /**
- * Transforme les données brutes des trois sources en ce que la page
- * affiche : alertes classées, voyants des tâches automatiques, fiches
- * projet, projets Notion ouverts, occupation.
+ * Transforme les données brutes des sources en ce que la page affiche :
+ * alertes classées, voyants des tâches automatiques, fiches projet,
+ * listes Todoist, occupation.
  */
 
-import { lireProjets, lireFaits, parDomaine, slugProjet, lireRecurrentes, lundiDe, numeroSemaine } from "./registre.js";
+import { lireProjets, lireFaits, parDomaine, slugProjet } from "./registre.js";
 
 const FUSEAU = "Africa/Casablanca";
 
@@ -150,9 +150,86 @@ const GUIDES_FLUX = {
   },
 };
 
+// ------------------------------------------------------------- Todoist
+
+/** L'API répond en snake_case ; on accepte aussi le camelCase, au cas où. */
+const champ = (o, ...noms) => {
+  for (const n of noms) if (o && o[n] !== undefined && o[n] !== null) return o[n];
+  return null;
+};
+const instant = (iso) => (iso ? new Date(iso).getTime() || 0 : 0);
+const jourDe = (iso) => (iso ? jourFr(local(new Date(iso)).jour) : "");
+
+/**
+ * Une carte par section du projet Todoist (la boîte de réception, ou celui
+ * nommé par `TODOIST_PROJET`), dans l'ordre des sections de Todoist : le nom
+ * de la carte est celui de la section, il suit ses changements. Dans chaque
+ * carte, les tâches de premier niveau — les sous-tâches détaillent, elles
+ * restent dans Todoist.
+ *
+ * Pour chaque tâche : la dernière fois qu'elle a été cochée (historique de
+ * 12 semaines), et le dernier commentaire s'il est plus récent que la
+ * coche — un commentaire déjà « soldé » par une coche n'a plus rien à dire.
+ */
+export function cartesTodoist({ projets, sections, taches, commentaires, faites }, nomProjet = "") {
+  const vivant = (o) => !champ(o, "is_deleted", "isDeleted") && !champ(o, "is_archived", "isArchived");
+  const projet = (projets || []).filter(vivant).find((p) => (nomProjet
+    ? String(p.name || "").trim().toLowerCase() === nomProjet.trim().toLowerCase()
+    : champ(p, "inbox_project", "is_inbox_project", "isInboxProject")));
+  if (!projet) {
+    return { ok: false, erreur: nomProjet ? `Le projet Todoist « ${nomProjet} » est introuvable (TODOIST_PROJET).` : "La boîte de réception de Todoist est introuvable." };
+  }
+  const idProjet = String(projet.id);
+  const ordre = (o, ...noms) => Number(champ(o, ...noms)) || 0;
+
+  // La dernière coche de chaque tâche, par son identifiant et par son nom.
+  const coches = {};
+  for (const f of faites || []) {
+    const quand = champ(f, "completed_at", "completedAt");
+    for (const cle of [champ(f, "task_id", "taskId", "item_id", "id"), f.content]) {
+      if (cle === null || cle === undefined || cle === "") continue;
+      if (instant(quand) > instant(coches[String(cle)])) coches[String(cle)] = quand;
+    }
+  }
+  // Le dernier commentaire de chaque tâche.
+  const notes = {};
+  for (const n of commentaires || []) {
+    if (!vivant(n)) continue;
+    const cle = String(champ(n, "item_id", "task_id", "itemId", "taskId"));
+    if (!notes[cle] || instant(champ(n, "posted_at", "postedAt")) > instant(champ(notes[cle], "posted_at", "postedAt"))) notes[cle] = n;
+  }
+
+  const cartes = (sections || [])
+    .filter((s) => vivant(s) && String(champ(s, "project_id", "projectId")) === idProjet)
+    .sort((a, b) => ordre(a, "section_order", "sectionOrder", "order") - ordre(b, "section_order", "sectionOrder", "order"))
+    .map((s) => ({ id: String(s.id), nom: s.name || "", taches: [] }));
+  const parSection = Object.fromEntries(cartes.map((c) => [c.id, c]));
+
+  const ouvertes = (taches || [])
+    .filter((t) => vivant(t) && !champ(t, "checked", "is_completed") && !champ(t, "parent_id", "parentId"))
+    .sort((a, b) => ordre(a, "child_order", "childOrder", "order") - ordre(b, "child_order", "childOrder", "order"));
+  for (const t of ouvertes) {
+    const carte = parSection[String(champ(t, "section_id", "sectionId"))];
+    if (!carte) continue;
+    const coche = coches[String(t.id)] || coches[t.content] || null;
+    const note = notes[String(t.id)];
+    const noteLe = note ? champ(note, "posted_at", "postedAt") : null;
+    carte.taches.push({
+      id: String(t.id),
+      nom: t.content || "",
+      recurrente: Boolean(t.due && champ(t.due, "is_recurring", "isRecurring")),
+      coche_le: jourDe(coche),
+      commentaire: note && (!coche || instant(noteLe) > instant(coche))
+        ? { texte: String(note.content || "").trim() || "(pièce jointe)", le: jourDe(noteLe) }
+        : null,
+    });
+  }
+  return { ok: true, projet: projet.name || "", cartes };
+}
+
 // ------------------------------------------------------------- Analyse
 
-export function analyser({ github, registre, supabase }, maintenant) {
+export function analyser({ github, registre, supabase, todoist: todoistBrut = { ok: false, absent: true } }, maintenant) {
   const ici = local(maintenant);
   // La copie de l'appli passe à 23h30 : avant, le dernier jour visible est hier.
   const copieDuJour = ici.h * 60 + ici.m >= 23 * 60 + 45;
@@ -406,38 +483,17 @@ export function analyser({ github, registre, supabase }, maintenant) {
     }
   }
 
-  // --- Tâches récurrentes : une ligne par tâche, une colonne par semaine
-  // (lundi → dimanche, comme les résumés de la semaine) : la semaine
-  // dernière, pour voir ce qui a été fait ou oublié, cette semaine, puis les
-  // quatre à venir.
-  const SEMAINES_PASSEES = 1, NB_SEMAINES = 6;
-  const recurrentes = { ok: registre.ok, semaines: [], lignes: [] };
-  if (registre.ok) {
-    const cetteSemaine = lundiDe(ici.jour);
-    recurrentes.semaines = Array.from({ length: NB_SEMAINES }, (_, k) => {
-      const lundi = decaler(cetteSemaine, 7 * (k - SEMAINES_PASSEES));
-      return { lundi, numero: numeroSemaine(lundi), du: jourFr(lundi), au: jourFr(decaler(lundi, 6)),
-        en_cours: lundi === cetteSemaine, passee: lundi < cetteSemaine };
-    });
-    recurrentes.lignes = lireRecurrentes(registre.donnees.recurrent).map((t) => ({
-      ...t,
-      cases: recurrentes.semaines.map((s) => ({
-        lundi: s.lundi,
-        note: t.notes[s.lundi] || "",
-        etat: t.faites.includes(s.lundi) ? "fait" : (t.depuis && s.lundi < t.depuis) ? "avant"
-          : s.en_cours ? "en_cours" : s.lundi > cetteSemaine ? "a_venir" : "manque",
-      })),
-    }));
-  }
+  // --- Les listes Todoist : une carte par section
+  const todoist = todoistBrut.ok ? cartesTodoist(todoistBrut.donnees, todoistBrut.donnees.nom_projet) : { ok: false, erreur: todoistBrut.erreur || "" };
 
   // --- Sources mal configurées
-  const SECRETS = { GitHub: "`GITHUB_TOKEN`", Registre: "`GITHUB_TOKEN`", Supabase: "`SUPABASE_URL` et `SUPABASE_CLE_TABLEAU`" };
+  const SECRETS = { GitHub: "`GITHUB_TOKEN`", Registre: "`GITHUB_TOKEN`", Supabase: "`SUPABASE_URL` et `SUPABASE_CLE_TABLEAU`", Todoist: "`TODOIST_TOKEN`" };
   const guideSource = (secrets) => ({
     faire: `Lire le message ci-dessus. Le plus souvent, un secret du Worker manque ou a changé : Cloudflare → le Worker → Settings → Variables and Secrets → ${secrets}.`,
     fini: "La pastille de la source, en haut de la page, est verte.",
     verifier: `${RELIRE} Une panne passagère de GitHub ou de Supabase se règle seule.`,
   });
-  for (const [nom, s] of [["GitHub", github], ["Registre", registre], ["Supabase", supabase]]) {
+  for (const [nom, s] of [["GitHub", github], ["Registre", registre], ["Supabase", supabase], ...(todoistBrut.absent ? [] : [["Todoist", todoistBrut]])]) {
     if (!s.ok) alerte("info", `${nom} n'est pas lu`, s.erreur, "Configuration", true, guideSource(SECRETS[nom]));
   }
   for (const d of depots) {
@@ -467,8 +523,8 @@ export function analyser({ github, registre, supabase }, maintenant) {
     chiffres: sb ? sb.chiffres : null,
     detail_mois: sb ? sb.detail_mois : null,
     semaine: registre.ok ? registre.donnees.semaine : "",
-    recurrentes,
+    todoist,
     occupation: sb ? sb.occupation : null,
-    etat: { github: github.ok, registre: registre.ok, supabase: supabase.ok },
+    etat: { github: github.ok, registre: registre.ok, supabase: supabase.ok, todoist: todoist.ok },
   };
 }

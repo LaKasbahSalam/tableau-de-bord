@@ -97,29 +97,6 @@ La fonction de vente échouait à chaque appel.
   // tresorerie : dépôt pas encore créé -> 404
 };
 
-// Les lundis des semaines d'avant (0 = cette semaine, négatif = à venir), au format du fichier.
-const lundi = (n) => {
-  const d = new Date(); d.setUTCHours(12, 0, 0, 0);
-  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7) - 7 * n);
-  const iso = d.toISOString().slice(0, 10);
-  return { iso, fr: `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` };
-};
-reponses["/repos/LaKasbahSalam/Kasbah-Analytique/contents/pilotage/recurrent.md"] = `# Tâches récurrentes
-
-## Vérifier les ventes de Repas
-
-**Depuis :** ${lundi(3).fr}
-**Fait :** ${lundi(3).fr}, ${lundi(1).fr}, ${lundi(-1).fr}
-**Note ${lundi(1).fr} :** Fait, mais la facture du boucher manque
-**Note ${lundi(-1).fr} :** Prévoir le boucher
-
-Rapprocher les achats de repas des fiches clients.
-
-## Compter la caisse
-
-**Depuis :** ${lundi(-2).fr}
-`;
-
 const supabase = {
   genere_le: new Date().toISOString(),
   chiffres: {
@@ -176,6 +153,50 @@ export const ecrits = [];
 // tester l'aller-retour complet (ajout, liste, téléchargement, retrait).
 const docsStore = {};
 let prochainShaDoc = 1;
+
+// Todoist : la boîte de réception et ses quatre sections (rangées dans le
+// désordre ici : c'est `section_order` qui compte), une section archivée,
+// et un autre projet qu'on ne lit pas.
+const todoistAppels = [];
+const todoistExemple = {
+  projets: [
+    { id: "p0", name: "Inbox", inbox_project: true },
+    { id: "p1", name: "Amenagement Hmomia" },
+  ],
+  sections: [
+    { id: "s2", project_id: "p0", name: "Taches quotidiennes", section_order: 2 },
+    { id: "s1", project_id: "p0", name: "Taches urgentes", section_order: 1 },
+    { id: "s4", project_id: "p0", name: "Taches mensuelles", section_order: 4 },
+    { id: "s3", project_id: "p0", name: "Taches hebdomadaires", section_order: 3 },
+    { id: "s5", project_id: "p0", name: "Ancienne section", section_order: 5, is_archived: true },
+    { id: "s9", project_id: "p1", name: "Travaux", section_order: 1 },
+  ],
+  taches: [
+    { id: "1", content: "Réparer la douche", project_id: "p0", section_id: "s1", parent_id: null, child_order: 1, due: null },
+    { id: "2", content: "Compter la caisse", project_id: "p0", section_id: "s2", parent_id: null, child_order: 1,
+      due: { date: "2026-10-23", string: "every day", is_recurring: true } },
+    { id: "3", content: "Remplir l'onglet Banque", project_id: "p0", section_id: "s3", parent_id: null, child_order: 1,
+      due: { date: "2026-10-26", string: "every monday", is_recurring: true } },
+    { id: "4", content: "Sous-étape de la Banque", project_id: "p0", section_id: "s3", parent_id: "3", child_order: 2, due: null },
+    { id: "5", content: "Bilan du mois", project_id: "p0", section_id: "s4", parent_id: null, child_order: 1,
+      due: { date: "2026-10-31", string: "every last day", is_recurring: true } },
+    { id: "6", content: "Poncer les échelles", project_id: "p1", section_id: "s9", parent_id: null, child_order: 1, due: null },
+    { id: "7", content: "Déjà cochée", project_id: "p0", section_id: "s2", parent_id: null, child_order: 2, checked: true, due: null },
+    { id: "8", content: "Tâche supprimée", project_id: "p0", section_id: "s3", parent_id: null, child_order: 3, is_deleted: true, due: null },
+  ],
+  commentaires: [
+    { id: "n1", item_id: "2", content: "Ancien commentaire", posted_at: "2026-10-20T08:00:00Z" },
+    { id: "n2", item_id: "2", content: "Écart de 20 dh", posted_at: "2026-10-22T08:00:00Z" },
+    { id: "n3", item_id: "3", content: "Fait avec la banque", posted_at: "2026-10-19T08:00:00Z" },
+    { id: "n4", item_id: "5", content: "", file_attachment: { file_name: "bilan.pdf" }, posted_at: "2026-10-10T08:00:00Z" },
+    { id: "n5", item_id: "5", content: "Effacé", posted_at: "2026-10-11T08:00:00Z", is_deleted: true },
+  ],
+  faites: [
+    { task_id: "2", content: "Compter la caisse", completed_at: "2026-10-20T19:00:00Z" },
+    { task_id: "2", content: "Compter la caisse", completed_at: "2026-10-21T19:00:00Z" },
+    { task_id: "3", content: "Remplir l'onglet Banque", completed_at: "2026-10-20T09:00:00Z" },
+  ],
+};
 
 globalThis.fetch = async (url, opts = {}) => {
   const u = new URL(url);
@@ -234,6 +255,22 @@ globalThis.fetch = async (url, opts = {}) => {
     const r = reponses[u.pathname];
     if (r === undefined) return new Response("", { status: 404 });
     return typeof r === "string" ? new Response(r) : json(r);
+  }
+  if (u.host === "api.todoist.com") {
+    if (opts.headers?.Authorization !== "Bearer td-ok") return new Response("", { status: 401 });
+    const chemin = u.pathname.replace("/api/v1/", "");
+    todoistAppels.push({ chemin: chemin + u.search, methode: opts.method || "GET", corps: opts.body ? String(opts.body) : "" });
+    if (chemin === "sync") {
+      return json({ projects: todoistExemple.projets, sections: todoistExemple.sections, items: todoistExemple.taches,
+        notes: todoistExemple.commentaires, sync_token: "x", full_sync: true });
+    }
+    // L'historique en deux pages, pour vérifier que la suite est lue.
+    if (chemin === "tasks/completed/by_completion_date") {
+      return u.searchParams.get("cursor") === "p2"
+        ? json({ items: todoistExemple.faites.slice(2), next_cursor: null })
+        : json({ items: todoistExemple.faites.slice(0, 2), next_cursor: "p2" });
+    }
+    return new Response("", { status: 404 });
   }
   if (u.pathname.endsWith("/rpc/tableau_de_bord")) {
     return JSON.parse(opts.body).p_cle === "cle-ok" ? json(supabase) : new Response('{"message":"clé refusée"}', { status: 400 });
@@ -387,7 +424,7 @@ Rien à voir.
 `;
   const vue = analyser({
     github: { ok: true, donnees: [] },
-    registre: { ok: true, donnees: { projets: projetsMd, mois: [{ nom: "2026-09.md", contenu: moisMd }], technique: "", recurrent: "", semaine: "" } },
+    registre: { ok: true, donnees: { projets: projetsMd, mois: [{ nom: "2026-09.md", contenu: moisMd }], technique: "", semaine: "" } },
     supabase: { ok: false, erreur: "" },
   }, new Date());
   const snack = vue.projets_ouverts.lignes[0];
@@ -679,86 +716,67 @@ if (prevTexte) {
   verifier(/<details class="pli" open>\s*<summary class="section-head"><h2 id="h-att">/.test(page), "ce qui demande une action reste ouvert");
 }
 
-// --- Les tâches de chaque semaine : une ligne par tâche, une colonne par semaine
+// --- Les tâches : une carte par section de Todoist
 {
-  const grille = (page.match(/<section id="recurrentes"[\s\S]*?<\/section>/) || [""])[0];
-  verifier(grille.includes("Vérifier les ventes de Repas"), "la tâche récurrente a sa ligne");
-  const entetes = grille.match(/<th class="[^"]*">S\d+<small>/g) || [];
-  verifier(entetes.length === 6, "six colonnes de semaines, numérotées comme les résumés");
-  verifier(entetes[0].includes("passee") && entetes[1].includes("encours"), "la semaine dernière d'abord, puis cette semaine, puis les quatre à venir");
-  verifier(grille.includes("dernière</small>") && grille.includes("cette semaine</small>"), "les deux semaines sont nommées en toutes lettres");
-  verifier((grille.match(/class="case fait[ "]/g) || []).length === 2, "la semaine dernière faite et la semaine cochée d'avance sont cochées");
-  verifier((grille.match(/class="case a_venir"/g) || []).length === 6, "les semaines à venir attendent, sans orange");
-  verifier(!grille.includes("case manque"), "la semaine dernière a été faite : pas d'orange");
-  verifier((grille.match(/class="case avant"/g) || []).length === 3, "avant « Depuis », pas de case à cocher");
-  verifier((grille.match(/class="case en_cours"/g) || []).length === 1, "la semaine en cours attend");
-  const grilleAssocie = (vueAssocie.match(/<section id="recurrentes"[\s\S]*?<\/section>/) || [""])[0];
-  verifier(grilleAssocie.includes("case fait") && !grilleAssocie.includes("/recurrente"), "l'associé voit la grille, sans pouvoir cocher");
+  const { pageTableau } = await import("../src/page.js");
+  const { cartesTodoist } = await import("../src/analyse.js");
+  const vue = analyser({
+    github: { ok: true, donnees: [] }, registre: { ok: false, erreur: "" }, supabase: { ok: false, erreur: "" },
+    todoist: { ok: true, donnees: { nom_projet: "", ...todoistExemple } },
+  }, new Date("2026-10-23T10:00:00Z"));
+  const td = vue.todoist;
+  const carte = (nom) => td.cartes.find((c) => c.nom === nom) || { taches: [] };
+  const tache = (nom) => td.cartes.flatMap((c) => c.taches).find((t) => t.nom === nom);
+  verifier(td.cartes.map((c) => c.nom).join("|") === "Taches urgentes|Taches quotidiennes|Taches hebdomadaires|Taches mensuelles",
+    "une carte par section de la boîte de réception, dans l'ordre de Todoist, sans la section archivée ni l'autre projet");
+  const renommee = cartesTodoist({ ...todoistExemple, sections: todoistExemple.sections.map((s) => (s.id === "s1" ? { ...s, name: "Urgent !" } : s)) });
+  verifier(renommee.cartes[0].nom === "Urgent !", "renommer une section dans Todoist renomme sa carte, à la même place");
+  verifier(carte("Taches hebdomadaires").taches.map((t) => t.nom).join("|") === "Remplir l'onglet Banque", "ni les sous-tâches, ni les tâches supprimées");
+  verifier(!tache("Déjà cochée") && !tache("Poncer les échelles"), "ni les tâches cochées, ni celles d'un autre projet");
+  const caisse = tache("Compter la caisse");
+  verifier(caisse.coche_le === "21/10", "la dernière coche, la plus récente de l'historique");
+  verifier(caisse.commentaire && caisse.commentaire.texte === "Écart de 20 dh" && caisse.commentaire.le === "22/10", "le dernier commentaire, plus récent que la coche, avec sa date");
+  verifier(tache("Remplir l'onglet Banque").coche_le === "20/10" && tache("Remplir l'onglet Banque").commentaire === null, "un commentaire antérieur à la coche ne s'affiche pas");
+  const bilan = tache("Bilan du mois");
+  verifier(bilan.coche_le === "" && bilan.recurrente && bilan.commentaire.texte === "(pièce jointe)" && bilan.commentaire.le === "10/10",
+    "jamais cochée : le dernier commentaire s'affiche, une pièce jointe se nomme, un commentaire effacé ne compte pas");
+  const autre = cartesTodoist(todoistExemple, "amenagement hmomia");
+  verifier(autre.ok && autre.cartes.length === 1 && autre.cartes[0].taches[0].nom === "Poncer les échelles", "TODOIST_PROJET choisit un autre projet, par son nom");
+  verifier(!cartesTodoist(todoistExemple, "Inconnu").ok, "un projet introuvable est dit");
 
-  const cocher = (lundiIso, cle = cookie, titre = "Vérifier les ventes de Repas") => {
-    const fc = new FormData();
-    fc.set("i", "0"); fc.set("titre", titre); fc.set("lundi", lundiIso);
-    return worker.fetch(new Request("https://t.dev/recurrente", { method: "POST", body: fc, headers: { Cookie: cle } }), env);
-  };
-  let avantRec = ecrits.length;
-  r = await cocher(lundi(0).iso);
-  const ecritRec = ecrits[ecrits.length - 1];
-  verifier(r.status === 303 && ecrits.length === avantRec + 1 && ecritRec.chemin.endsWith("pilotage/recurrent.md"), "cocher une case écrit un commit");
-  verifier(ecritRec.contenu.includes(`**Fait :** ${lundi(3).fr}, ${lundi(1).fr}, ${lundi(0).fr}, ${lundi(-1).fr}
-`), "la semaine est ajoutée, dans l'ordre");
-  verifier(ecritRec.contenu.includes("Rapprocher les achats") && /^Coche « Vérifier les ventes de Repas », semaine du/.test(ecritRec.message), "le reste est intact, le commit dit quoi");
-  r = await cocher(lundi(1).iso);
-  verifier(r.status === 303 && ecrits[ecrits.length - 1].contenu.includes(`**Fait :** ${lundi(3).fr}, ${lundi(-1).fr}
-`) && /^Décoche/.test(ecrits[ecrits.length - 1].message), "recliquer une case cochée la décoche");
-  avantRec = ecrits.length;
-  r = await cocher(lundi(0).iso, cookieAssocie);
-  verifier(r.status === 403 && ecrits.length === avantRec, "l'associé ne peut pas cocher");
-  r = await cocher(lundi(0).iso, cookie, "une tâche renommée");
-  verifier(r.status === 409 && ecrits.length === avantRec, "une tâche qui a bougé n'est pas écrasée");
-  const mardi = new Date(lundi(0).iso + "T12:00:00Z"); mardi.setUTCDate(mardi.getUTCDate() + 1);
-  r = await cocher(mardi.toISOString().slice(0, 10));
-  verifier(r.status === 400 && ecrits.length === avantRec, "seul un lundi est accepté");
+  const page = pageTableau(vue, new Date());
+  const bloc = (page.match(/<section id="taches"[\s\S]*?<\/section>/) || [""])[0];
+  const titres = (bloc.match(/<h3>[^<]+/g) || []).map((h) => h.slice(4).trim());
+  verifier(titres.join("|") === "Taches urgentes|Taches quotidiennes|Taches hebdomadaires|Taches mensuelles" && bloc.includes('class="cartes-td"'),
+    "quatre cartes côte à côte, l'urgente à gauche");
+  verifier(bloc.includes('href="https://app.todoist.com/app/task/2"') && bloc.includes("Cochée le 21/10") && bloc.includes("<b>22/10</b> Écart de 20 dh"),
+    "le nom ouvre la tâche, puis la dernière coche et le dernier commentaire");
+  verifier(bloc.includes("Pas cochée depuis 12 semaines"), "une tâche récurrente jamais cochée le dit");
+  verifier(!/Réparer la douche<\/a>\s*<span class="coche/.test(bloc), "une tâche simple n'a pas de ligne de coche");
+  verifier(!page.includes('id="recurrentes"') && !page.includes("/recurrente") && !page.includes("recurrent.md"), "l'ancienne grille a disparu");
+  const blocAssocie = (pageTableau(vue, new Date(), true).match(/<section id="taches"[\s\S]*?<\/section>/) || [""])[0];
+  verifier(blocAssocie.includes("Bilan du mois") && !blocAssocie.includes("app.todoist.com"), "l'associé voit les cartes, sans le lien vers Todoist");
 
-  // --- Un commentaire par semaine
-  verifier(grille.includes("<li><b>S") && grille.includes("Fait, mais la facture du boucher manque</li>"), "le commentaire de la semaine dernière s'affiche en clair sous la tâche");
-  verifier(grille.includes("</b> Prévoir le boucher</li>") && grille.includes("· Prévoir le boucher"), "celui d'une semaine à venir aussi, et au survol de sa case");
-  verifier((grille.match(/class="bulle pleine"/g) || []).length === 2 && (grille.match(/>✎<\/button>/g) || []).length === 7, "une bulle sous chaque case : 💬 si commentée, ✎ sinon");
-  verifier((grille.match(/<div popover id="note-/g) || []).length === 9 && (grille.match(/action="\/recurrente\/note"/g) || []).length === 9,
-    "une fenêtre par semaine ouverte (6 + 3), aucune avant « Depuis »");
-  verifier(/popovertarget="note-0-[\d-]+"[\s\S]*?<div popover id="note-0-/.test(grille) && grille.includes('popovertargetaction="hide"'), "la bulle ouvre sa fenêtre, Annuler la ferme, sans script");
-  verifier(/<textarea[^>]*name="texte"[^>]*autofocus[^>]*>Fait, mais la facture du boucher manque<\/textarea>/.test(grille), "la fenêtre reprend le commentaire existant, prête à écrire");
-  verifier(grilleAssocie.includes("Fait, mais la facture du boucher manque") && !grilleAssocie.includes("/recurrente/note") && !grilleAssocie.includes("popover"),
-    "l'associé lit les commentaires, sans pouvoir les écrire");
+  const vide = analyser({ github: { ok: true, donnees: [] }, registre: { ok: false, erreur: "" }, supabase: { ok: false, erreur: "" },
+    todoist: { ok: false, manque: "TODOIST_TOKEN", erreur: "Clé Todoist pas encore ajoutée." } }, new Date());
+  verifier(vide.alertes.some((a) => a.titre === "Todoist n'est pas lu" && /TODOIST_TOKEN/.test(a.guide.faire)), "sans clé, la page le dit et dit quel secret ajouter");
+  verifier(pageTableau(vide, new Date()).includes("Todoist n'est pas lu : Clé Todoist pas encore ajoutée."), "et les cartes laissent un message à leur place");
 
-  const noter = (lundiIso, texte, cle = cookie) => {
-    const fc = new FormData();
-    fc.set("i", "0"); fc.set("titre", "Vérifier les ventes de Repas"); fc.set("lundi", lundiIso); fc.set("texte", texte);
-    return worker.fetch(new Request("https://t.dev/recurrente/note", { method: "POST", body: fc, headers: { Cookie: cle } }), env);
-  };
-  avantRec = ecrits.length;
-  r = await noter(lundi(0).iso, "Fait le mardi\navec Ayoub");
-  let ecritNote = ecrits[ecrits.length - 1];
-  verifier(r.status === 303 && ecrits.length === avantRec + 1 && ecritNote.chemin.endsWith("pilotage/recurrent.md"), "commenter une semaine écrit un commit");
-  verifier(r.headers.get("Location") === "/#rec-0", "et ramène sur la ligne de la tâche");
-  verifier(ecritNote.contenu.includes(`**Note ${lundi(1).fr} :** Fait, mais la facture du boucher manque
-**Note ${lundi(0).fr} :** Fait le mardi avec Ayoub
-**Note ${lundi(-1).fr} :** Prévoir le boucher
-`), "le commentaire tient sur une ligne, rangé par date");
-  verifier(/^Note « Vérifier les ventes de Repas », semaine du/.test(ecritNote.message) && ecritNote.contenu.includes("Rapprocher les achats"), "le reste est intact, le commit dit quoi");
-  r = await noter(lundi(1).iso, "Facture retrouvée");
-  ecritNote = ecrits[ecrits.length - 1];
-  verifier(ecritNote.contenu.includes(`**Note ${lundi(1).fr} :** Facture retrouvée
-`) && !ecritNote.contenu.includes("boucher manque"), "réécrire un commentaire le remplace");
-  r = await noter(lundi(1).iso, "   ");
-  ecritNote = ecrits[ecrits.length - 1];
-  verifier(!ecritNote.contenu.includes(`**Note ${lundi(1).fr}`) && /^Note effacée/.test(ecritNote.message), "le vider l'efface");
-  avantRec = ecrits.length;
-  r = await noter(lundi(1).iso, "Fait, mais la facture du boucher manque");
-  verifier(r.status === 303 && ecrits.length === avantRec, "un commentaire inchangé n'écrit rien");
-  r = await noter(lundi(0).iso, "x", cookieAssocie);
-  verifier(r.status === 403 && ecrits.length === avantRec, "l'associé ne peut pas commenter");
-  r = await noter(mardi.toISOString().slice(0, 10), "x");
-  verifier(r.status === 400 && ecrits.length === avantRec, "un commentaire va sur un lundi");
+  // Par le Worker : un appel sync, puis l'historique page par page.
+  const envTd = { ...env, TODOIST_TOKEN: "td-ok" };
+  r = await worker.fetch(new Request("https://t.dev/?rafraichir=1", { headers: { Cookie: cookie } }), envTd);
+  const pageWorker = await r.text();
+  const sync = todoistAppels.find((a) => a.chemin === "sync");
+  verifier(sync && sync.methode === "POST" && /sync_token=\*/.test(decodeURIComponent(sync.corps)) && decodeURIComponent(sync.corps).includes('"notes"'),
+    "un seul appel sync ramène projets, sections, tâches et commentaires");
+  verifier(todoistAppels.some((a) => a.chemin.includes("cursor=p2")) && todoistAppels.some((a) => /^tasks\/completed\/by_completion_date\?.*since=/.test(a.chemin)),
+    "l'historique des coches est lu jusqu'à sa dernière page");
+  verifier(pageWorker.includes("Cochée le 20/10") && pageWorker.includes('class="pill p-ok">Todoist<'),
+    "la page montre les cartes avec la deuxième page de l'historique, la pastille Todoist est verte");
+  r = await worker.fetch(new Request("https://t.dev/?rafraichir=1", { headers: { Cookie: cookie } }), { ...env, TODOIST_TOKEN: "mauvais" });
+  verifier((await r.text()).includes("Todoist refuse la clé"), "un jeton refusé est dit en clair, le reste de la page s'affiche");
+  r = await worker.fetch(new Request("https://t.dev/recurrente", { method: "POST", body: new FormData(), headers: { Cookie: cookie } }), env);
+  verifier(r.status === 404, "les adresses de l'ancienne grille n'existent plus");
 }
 
 if (process.argv[2]) fs.writeFileSync(process.argv[2], page);

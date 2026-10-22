@@ -234,37 +234,19 @@ td.echeance{white-space:normal;min-width:110px;max-width:160px}
 .doc-repli .tbl-scroll{border:0;border-radius:0}
 .semaine{border-left:4px solid var(--accent)}
 .semaine h4{font-size:15px;margin:18px 0 6px}
-.recur td,.recur th{text-align:center;vertical-align:middle}
-.recur td:first-child,.recur th:first-child{text-align:left;min-width:220px}
-.recur th small{display:block;font-size:10.5px;letter-spacing:0;text-transform:none}
-.recur th.encours{color:var(--accent)}
-.recur form{margin:0}
-.case{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:7px;border:1.5px solid var(--line);background:var(--bg);color:var(--surface);font:600 16px/1 var(--body);padding:0}
-button.case{cursor:pointer}
-button.case:hover{border-color:var(--accent)}
-.case.fait{background:var(--ok);border-color:var(--ok)}
-.case.manque{border-color:var(--warn);background:var(--warn-soft)}
-.case.en_cours{border-color:var(--accent)}
-.case.a_venir{opacity:.7}
-.case.avant{border-style:dashed;opacity:.45}
-.recur td .semaine-cell{display:inline-grid;justify-items:center;gap:3px}
-.bulle{font:600 12px/1 var(--body);min-width:22px;height:20px;padding:0 5px;border-radius:10px;border:1px dashed var(--line);background:transparent;color:var(--ink-3);cursor:pointer}
-.bulle:hover{border-color:var(--accent);color:var(--accent)}
-.bulle.pleine{border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent)}
-span.bulle{cursor:help}
-.notes-sem{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:3px;font-size:12.5px;color:var(--ink-2);max-width:46ch}
-.notes-sem b{font-family:var(--mono);font-weight:500;font-size:11.5px;color:var(--ink-3)}
-.fenetre{border:1px solid var(--line);border-radius:12px;padding:18px 20px;width:min(440px,calc(100vw - 32px));background:var(--surface);color:var(--ink);box-shadow:0 12px 40px rgba(0,0,0,.25);text-align:left}
-.fenetre::backdrop{background:rgba(20,15,10,.35)}
-.fenetre form{display:grid;gap:10px;margin:0}
-.fenetre h4{margin:0;font-size:15px;font-family:var(--display)}
-.fenetre label{font-size:12.5px;color:var(--ink-3)}
-.fenetre textarea{font:inherit;font-size:14px;width:100%;min-height:96px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);resize:vertical}
-.fenetre .boutons{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.fenetre button{font:inherit;font-size:13.5px;font-weight:600;padding:7px 14px;border:0;border-radius:8px;cursor:pointer}
-.fenetre .garder{background:var(--accent);color:var(--surface)}
-.fenetre .fermer{background:var(--sunk);color:var(--ink)}
-.fenetre .aide{margin:0;font-size:12px;color:var(--ink-3)}
+.cartes-td{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:980px){.cartes-td{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.cartes-td{grid-template-columns:minmax(0,1fr)}}
+.cartes-td h3 .nb{font-family:var(--mono);font-weight:500;font-size:12px;color:var(--ink-3);margin-left:4px}
+.cartes-td ul{list-style:none;margin:0;padding:0;display:grid;gap:9px}
+.cartes-td li{display:grid;gap:2px;font-size:14px;border-top:1px solid var(--line);padding-top:9px;overflow-wrap:anywhere}
+.cartes-td li:first-child{border-top:0;padding-top:0}
+.cartes-td li a{color:inherit;text-decoration:none}
+.cartes-td li a:hover{text-decoration:underline}
+.cartes-td .coche{font-family:var(--mono);font-size:11.5px;color:var(--ink-3)}
+.cartes-td .coche.jamais{color:var(--warn)}
+.cartes-td .com{margin:3px 0 0;font-size:12.5px;color:var(--ink-2);background:var(--sunk);border-radius:6px;padding:5px 8px}
+.cartes-td .com b{font-family:var(--mono);font-weight:500;font-size:11px;color:var(--ink-3)}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px}
 .chart svg{width:100%;height:auto;display:block}
 .chart text{font-family:var(--mono);font-size:11px;fill:var(--ink-3)}
@@ -494,63 +476,24 @@ function semaineHtml(texte) {
 }
 
 /**
- * Les tâches récurrentes (`pilotage/recurrent.md`) : une ligne par tâche,
- * une colonne par semaine. L'équipe coche une case (un commit) ; l'associé
- * voit la même grille, sans pouvoir la changer.
- *
- * Chaque semaine peut porter un commentaire. Sous chaque case, une bulle
- * (✎ vide, 💬 remplie) ouvre une petite fenêtre au milieu de l'écran
- * (attribut HTML `popover` : toujours sans script), déjà remplie ; la
- * vider efface le commentaire. Les commentaires de toutes les semaines
- * affichées se lisent en clair sous le nom de la tâche. L'associé les
- * lit, sans bulle pour écrire.
+ * Les listes Todoist : une carte par section, dans l'ordre de Todoist et
+ * sous le nom de la section. Pour chaque tâche, la dernière coche et, s'il
+ * est plus récent, le dernier commentaire avec sa date. En lecture seule :
+ * on coche et on commente dans Todoist. Le nom ouvre la tâche ; l'associé
+ * voit les cartes, sans le lien.
  */
-function recurrentesHtml(r, peutCocher) {
-  if (!r || !r.ok) return `<div class="panne">Le registre n'est pas lu : les tâches récurrentes sont dans <span class="mono">pilotage/recurrent.md</span>.</div>`;
-  if (!r.lignes.length) return `<div class="panne">Aucune tâche récurrente : elles s'écrivent dans <span class="mono">pilotage/recurrent.md</span> du dépôt Kasbah-Analytique.</div>`;
-  const AIDE = { fait: "Faite", manque: "Pas faite", en_cours: "À faire cette semaine", a_venir: "À venir", avant: "La tâche n'existait pas encore" };
-  const jourCourt = (lundi) => `${lundi.slice(8, 10)}/${lundi.slice(5, 7)}`;
-  const caseHtml = (t, c) => {
-    const signe = c.etat === "fait" ? "✓" : "";
-    const titre = `${AIDE[c.etat]} · semaine du ${jourCourt(c.lundi)}${c.note ? ` · ${c.note}` : ""}`;
-    const classe = `case ${c.etat}`;
-    if (!peutCocher || c.etat === "avant") return `<span class="${classe}" title="${esc(titre)}" aria-label="${esc(titre)}">${signe}</span>`;
-    return `<form method="post" action="/recurrente">
-      <input type="hidden" name="i" value="${t.index}"><input type="hidden" name="titre" value="${esc(t.titre)}"><input type="hidden" name="lundi" value="${esc(c.lundi)}">
-      <button type="submit" class="${classe}" title="${esc(titre)} · cliquer pour ${c.etat === "fait" ? "décocher" : "cocher"}" aria-label="${esc(titre)}">${signe}</button></form>`;
-  };
-  const semaine = (lundi) => r.semaines.find((s) => s.lundi === lundi) || {};
-  const quand = (s) => `S${s.numero} · ${s.en_cours ? "cette semaine" : s.passee ? "semaine dernière" : "à venir"} (${esc(s.du)} – ${esc(s.au)})`;
-  // Sous la case : la bulle qui ouvre la fenêtre du commentaire.
-  const bulleHtml = (t, c) => {
-    if (c.etat === "avant") return "";
-    const s = semaine(c.lundi);
-    if (!peutCocher) return c.note ? `<span class="bulle pleine" title="${esc(c.note)}" aria-label="Commentaire : ${esc(c.note)}">💬</span>` : "";
-    const id = `note-${t.index}-${c.lundi}`;
-    return `<button type="button" class="bulle${c.note ? " pleine" : ""}" popovertarget="${id}"
-        title="${esc(c.note || "Commenter cette semaine")}" aria-label="${c.note ? "Modifier le commentaire" : "Commenter"} · S${s.numero}">${c.note ? "💬" : "✎"}</button>
-      <div popover id="${id}" class="fenetre" role="dialog" aria-label="Commentaire · ${esc(t.nom)} · S${s.numero}">
-        <form method="post" action="/recurrente/note">
-          <input type="hidden" name="i" value="${t.index}"><input type="hidden" name="titre" value="${esc(t.titre)}"><input type="hidden" name="lundi" value="${esc(c.lundi)}">
-          <h4>${esc(t.nom)}</h4>
-          <label for="${id}-texte">${quand(s)}</label>
-          <textarea id="${id}-texte" name="texte" maxlength="300" autofocus placeholder="Ce qui a été fait, ce qui manque…">${esc(c.note)}</textarea>
-          <div class="boutons"><button type="submit" class="garder">Enregistrer</button>
-            <button type="button" class="fermer" popovertarget="${id}" popovertargetaction="hide">Annuler</button></div>
-          <p class="aide">Vider le texte efface le commentaire. Échap ferme la fenêtre.</p>
-        </form>
-      </div>`;
-  };
-  // Sous le nom de la tâche : les commentaires de toutes les semaines affichées.
-  const notesHtml = (t) => {
-    const ecrites = t.cases.filter((c) => c.note);
-    return ecrites.length ? `<ul class="notes-sem">${ecrites.map((c) => `<li><b>S${semaine(c.lundi).numero}</b> ${esc(c.note)}</li>`).join("")}</ul>` : "";
-  };
-  return `<div class="tbl-scroll"><table class="recur">
-    <thead><tr><th>Tâche</th>${r.semaines.map((s) => `<th class="${s.en_cours ? "encours" : s.passee ? "passee" : ""}">S${s.numero}<small>${esc(s.du)} – ${esc(s.au)}</small><small>${s.en_cours ? "cette semaine" : s.passee ? "dernière" : ""}</small></th>`).join("")}</tr></thead>
-    <tbody>${r.lignes.map((t) => `<tr id="rec-${t.index}">
-      <td><b>${esc(t.nom)}</b>${t.texte ? `<br><small>${md(t.texte.slice(0, 160))}${t.texte.length > 160 ? "…" : ""}</small>` : ""}${notesHtml(t)}</td>
-      ${t.cases.map((c) => `<td><div class="semaine-cell">${caseHtml(t, c)}${bulleHtml(t, c)}</div></td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+function todoistHtml(td, lien) {
+  if (!td || !td.ok) return `<div class="panne">Todoist n'est pas lu${td && td.erreur ? ` : ${esc(td.erreur)}` : "."}</div>`;
+  if (!td.cartes.length) return `<div class="panne">Aucune section dans « ${esc(td.projet)} » : chaque section de Todoist devient une carte.</div>`;
+  const court = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+  const tache = (t) => `<li>
+      ${lien ? `<a href="https://app.todoist.com/app/task/${encodeURIComponent(t.id)}">${esc(t.nom)}</a>` : `<span>${esc(t.nom)}</span>`}
+      ${t.coche_le ? `<span class="coche">Cochée le ${esc(t.coche_le)}</span>` : t.recurrente ? `<span class="coche jamais">Pas cochée depuis 12 semaines</span>` : ""}
+      ${t.commentaire ? `<p class="com"><b>${esc(t.commentaire.le)}</b> ${esc(court(t.commentaire.texte, 280))}</p>` : ""}</li>`;
+  return `<div class="cartes-td">${td.cartes.map((c) => `<article class="carte">
+    <h3>${esc(c.nom)} <span class="nb">${c.taches.length}</span></h3>
+    ${c.taches.length ? `<ul>${c.taches.map(tache).join("")}</ul>` : `<p class="aide">Rien dans cette section.</p>`}
+  </article>`).join("")}</div>`;
 }
 
 function occupationHtml(occ) {
@@ -668,7 +611,7 @@ export function pageTableau(v, lu, associe = false) {
   const sommaire = [
     ["chiffres", "Les chiffres"],
     ["semaine", "La semaine"],
-    ["recurrentes", "Chaque semaine"],
+    ["taches", "Tâches"],
     ["action", "\u00c0 faire"],
     ["faits", "Ce qui s'est fait"],
     ["nuit", "Les t\u00e2ches automatiques"],
@@ -684,7 +627,7 @@ export function pageTableau(v, lu, associe = false) {
     <div class="eyebrow">La Kasbah Salam \u00b7 F\u00e8s</div>
     <h1>Tableau de bord Kasbah</h1>
     <p>O\u00f9 en est l'h\u00f4tel, en une page : les chiffres, ce qui demande une action, ce qui a \u00e9t\u00e9 fait ou d\u00e9cid\u00e9, et comment tout \u00e7a est construit. Lu en direct, rien n'est saisi \u00e0 la main.</p>
-    <div class="srcs">${src("GitHub", v.etat.github)}${src("Registre", v.etat.registre)}${src("Supabase", v.etat.supabase)}</div>
+    <div class="srcs">${src("GitHub", v.etat.github)}${src("Registre", v.etat.registre)}${src("Supabase", v.etat.supabase)}${src("Todoist", v.etat.todoist)}</div>
   </div>
   <div class="stamp">
     <div><span class="eyebrow">Lu le ${jourFr(l.jour)} \u00e0</span><b>${heure}</b></div>
@@ -706,9 +649,9 @@ export function pageTableau(v, lu, associe = false) {
     semaineHtml(v.semaine))}
 </section>
 
-<section id="recurrentes" aria-labelledby="h-rec">
-  ${pli("h-rec", "Les tâches de chaque semaine", `La semaine dernière, cette semaine, puis les quatre suivantes · ${associe ? "" : "cliquer une case la coche, ✎ dessous pour la commenter · "}<span class="mono">pilotage/recurrent.md</span>`,
-    recurrentesHtml(v.recurrentes, !associe))}
+<section id="taches" aria-labelledby="h-taches">
+  ${pli("h-taches", "Les tâches", "Une carte par section de Todoist, dans son ordre · la dernière coche, et le dernier commentaire s'il est plus récent · on coche et on commente dans Todoist",
+    todoistHtml(v.todoist, !associe))}
 </section>
 
 <section id="action" aria-labelledby="h-att">

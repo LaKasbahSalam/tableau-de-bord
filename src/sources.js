@@ -1,5 +1,5 @@
 /**
- * Lecture des trois sources. Chaque source rend { ok, donnees } ou
+ * Lecture des sources (GitHub, registre, Supabase, Todoist). Chaque source rend { ok, donnees } ou
  * { ok: false, erreur } — jamais d'exception vers la page.
  */
 
@@ -15,12 +15,13 @@ export const DEPOTS = [
 ];
 
 export async function lireTout(env) {
-  const [github, registre, supabase] = await Promise.all([
+  const [github, registre, supabase, todoist] = await Promise.all([
     lireGithub(env).catch(echec),
     lireRegistre(env).catch(echec),
     lireSupabase(env).catch(echec),
+    lireTodoist(env).catch(echec),
   ]);
-  return { github, registre, supabase };
+  return { github, registre, supabase, todoist };
 }
 
 const echec = (e) => ({ ok: false, erreur: String(e && e.message ? e.message : e) });
@@ -111,12 +112,11 @@ async function lireRegistre(env) {
     .filter((f) => f.type === "file" && /^\d{4}-\d{2}\.md$/.test(f.name))
     .map((f) => f.name).sort().reverse().slice(0, 4); // 4 derniers mois
 
-  const [projets, technique, previsions, semaine, recurrent, documents, ...contenus] = await Promise.all([
+  const [projets, technique, previsions, semaine, documents, ...contenus] = await Promise.all([
     gh(`${base}/projets.md`, true),
     gh(`${base}/technique.md`, true),
     gh(`${base}/previsions.md`, true),
     gh(`${base}/semaine.md`, true),
-    gh(`${base}/recurrent.md`, true),
     listerTousDocuments(env),
     ...mois.map((n) => gh(`${base}/${n}`, true)),
   ]);
@@ -127,7 +127,6 @@ async function lireRegistre(env) {
       technique: technique || "",
       previsions: previsions || "",
       semaine: semaine || "",
-      recurrent: recurrent || "",
       documents,
       mois: mois.map((nom, i) => ({ nom, contenu: contenus[i] || "" })).filter((f) => f.contenu),
     },
@@ -159,11 +158,63 @@ async function lireSupabase(env) {
   return { ok: true, donnees: await r.json() };
 }
 
+// ---------------------------------------------------------------- Todoist
+
+/**
+ * Les listes de Karim et du manager. Deux lectures :
+ *   - `sync` rend d'un coup les projets, les sections, les tâches ouvertes
+ *     et leurs commentaires — un seul appel, quel que soit le nombre de
+ *     tâches ;
+ *   - l'historique des tâches cochées sur 12 semaines : une tâche
+ *     récurrente cochée ne disparaît pas, sa date avance, et seul cet
+ *     historique dit quand elle a été faite.
+ * Le tri (quel projet, quelles sections) se fait dans `analyse.js`.
+ */
+async function lireTodoist(env) {
+  if (!env.TODOIST_TOKEN) return { ok: false, manque: "TODOIST_TOKEN", erreur: "Clé Todoist pas encore ajoutée." };
+  const td = async (chemin, options = {}) => {
+    const r = await fetch(`https://api.todoist.com/api/v1/${chemin}`, {
+      ...options,
+      headers: { Authorization: `Bearer ${env.TODOIST_TOKEN}`, ...(options.headers || {}) },
+    });
+    if (r.status === 401 || r.status === 403) throw new Error("Todoist refuse la clé : recopier le jeton (Todoist → Paramètres → Intégrations → Développeur) dans TODOIST_TOKEN.");
+    if (!r.ok) throw new Error(`Todoist ${r.status} sur ${chemin.split("?")[0]}`);
+    return r.json();
+  };
+  // L'historique arrive par pages ; 10 pages de 200, c'est large.
+  const historique = async () => {
+    const maintenant = new Date();
+    const iso = (d) => d.toISOString().slice(0, 19) + "Z";
+    const params = { since: iso(new Date(maintenant - 84 * 864e5)), until: iso(maintenant), limit: 200 };
+    const liste = [];
+    let curseur = null;
+    for (let i = 0; i < 10; i++) {
+      const j = await td(`tasks/completed/by_completion_date?${new URLSearchParams({ ...params, ...(curseur ? { cursor: curseur } : {}) })}`);
+      liste.push(...(j.items || j.results || []));
+      curseur = j.next_cursor || j.nextCursor;
+      if (!curseur) break;
+    }
+    return liste;
+  };
+  const [s, faites] = await Promise.all([
+    td("sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ sync_token: "*", resource_types: JSON.stringify(["projects", "sections", "items", "notes"]) }),
+    }),
+    historique(),
+  ]);
+  return {
+    ok: true,
+    donnees: { nom_projet: env.TODOIST_PROJET || "", projets: s.projects || [], sections: s.sections || [], taches: s.items || [], commentaires: s.notes || [], faites },
+  };
+}
+
 
 // ------------------------------------------------- Écrire dans le registre
 
 const DEPOT_REGISTRE = "Kasbah-Analytique";
-const NOM_VALIDE = /^(projets|technique|previsions|recurrent|\d{4}-\d{2})\.md$/;
+const NOM_VALIDE = /^(projets|technique|previsions|\d{4}-\d{2})\.md$/;
 
 function entetesGithub(env, brut = false) {
   return {
